@@ -15,10 +15,10 @@ class Typesetter:
         self.debug = debug
 
         cr = self.cr = cairo.Context(surface)
-        cr.select_font_face("Monospace", cairo.FONT_SLANT_NORMAL, cairo.FONT_WEIGHT_NORMAL)
+        cr.select_font_face("Serif", cairo.FONT_SLANT_NORMAL, cairo.FONT_WEIGHT_NORMAL)
         cr.set_font_size(20)
 
-        self.ascent, self.descent, height, self.xadvance, yadvance = cr.font_extents()
+        self.ascent, self.descent, height = cr.font_extents()[:3]
         self.line_gap = height - self.ascent - self.descent
 
     def output(self):
@@ -31,16 +31,18 @@ class Typesetter:
         nodes = self.nodes = texwrap.ObjectList()
         nodes.debug = self.debug
 
-        adv = self.xadvance
+        space_adv = self.cr.text_extents(" ")[4]
+        space_glue = texwrap.Glue(space_adv, space_adv / 2, space_adv / 2)
 
         for ch in self.text:
             if ch in " ":
-                nodes.append(texwrap.Glue(adv, adv / 2, adv / 2))
+                nodes.append(space_glue)
             elif ch == "\u00A0": # No-Break Space.
                 nodes.append(texwrap.Penalty(0, texwrap.INFINITY))
-                nodes.append(texwrap.Glue(adv, adv / 2, adv / 2))
+                nodes.append(space_glue)
             else:
-                nodes.append(texwrap.Box(adv, ch))
+                chw = self.cr.text_extents(ch)[4]
+                nodes.append(texwrap.Box(chw, ch))
         nodes.add_closing_penalty()
 
     def _compute_breaks(self):
