@@ -40,7 +40,10 @@ class Typesetter:
 
         self.buffer.clear_contents()
         self.buffer.add_str(word)
-        self.buffer.direction = hb.HARFBUZZ.DIRECTION_RTL
+        if word.startswith("\u06DD"):
+            self.buffer.direction = hb.HARFBUZZ.DIRECTION_LTR
+        else:
+            self.buffer.direction = hb.HARFBUZZ.DIRECTION_RTL
         self.buffer.script = hb.HARFBUZZ.SCRIPT_ARABIC
         self.buffer.language = hb.Language.from_string("ar")
 
