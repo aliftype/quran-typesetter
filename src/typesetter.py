@@ -6,13 +6,14 @@ ft = qh.get_ft_lib()
 
 
 class Typesetter:
-    MARGIN = 10
 
-    def __init__(self, text, surface, text_width, page_width, page_height, debug=False):
+    def __init__(self, text, surface, text_width, page_width, page_height, top_margin, right_margin, debug=False):
         self.text = text
         self.text_width = text_width
         self.page_width = page_width
         self.page_height = page_height
+        self.top_margin = top_margin
+        self.right_margin = right_margin
         self.debug = debug
 
         ft_face = ft.find_face("Serif")
@@ -80,10 +81,10 @@ class Typesetter:
         lengths = [self.text_width]
         line_start = 0
         line = 0
-        pos = qh.Vector(self.page_width - self.MARGIN, self.MARGIN)
+        pos = qh.Vector(self.page_width - self.right_margin, self.top_margin)
         for breakpoint in self.breaks[1:]:
             pos.y += self.ascent
-            pos.x = self.page_width - self.MARGIN
+            pos.x = self.page_width - self.right_margin
 
             ratio = self.nodes.compute_adjustment_ratio(line_start, breakpoint, line, lengths)
             line += 1
@@ -103,11 +104,13 @@ class Typesetter:
             pos.y += self.descent + self.line_gap
 
 def main(text, text_width, debug, filename):
-    page_width = 1000
+    top_margin = 10
+    right_margin = 10
+    page_width = text_width + right_margin * 2
     page_height = 1000
     surface = qh.PDFSurface.create(filename, (page_width, page_height))
 
-    typesetter = Typesetter(text, surface, text_width, page_width, page_height, debug)
+    typesetter = Typesetter(text, surface, text_width, page_width, page_height, top_margin, right_margin, debug)
     typesetter.output()
 
 if __name__ == "__main__":
