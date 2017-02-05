@@ -131,4 +131,6 @@ def main(text, filename):
 
 if __name__ == "__main__":
     import sys
-    main(sys.argv[1], sys.argv[4])
+    with open(sys.argv[1], "r") as textfile:
+        text = textfile.read()
+        main(text, sys.argv[2])
