@@ -89,7 +89,14 @@ class Typesetter:
         line = 0
         pos = qh.Vector(0, self.top_margin)
         for breakpoint in self.breaks[1:]:
-            pos.x = self.page_width - self.right_margin
+            offset = 0
+            if line == len(self.breaks) - 2:
+                # center last line
+                offset = self.text_width - self.nodes.measure_width(line_start,
+                                                                    breakpoint)
+                offset /= 2
+
+            pos.x = self.page_width - self.right_margin - offset
 
             ratio = self.nodes.compute_adjustment_ratio(line_start, breakpoint, line, lengths)
             line += 1
