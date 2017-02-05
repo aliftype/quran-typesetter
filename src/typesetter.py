@@ -19,6 +19,7 @@ class Typesetter:
         cr.set_font_size(20)
 
         self.ascent, self.descent, height, self.xadvance, yadvance = cr.font_extents()
+        self.line_gap = height - self.ascent - self.descent
 
     def output(self):
         self._create_nodes()
@@ -52,8 +53,9 @@ class Typesetter:
         lengths = [self.width]
         line_start = 0
         line = 0
+        y = self.MARGIN
         for breakpoint in self.breaks[1:]:
-            y = self.MARGIN + (self.ascent + self.descent) * (line + 1)
+            y += self.ascent
             x = self.MARGIN
 
             ratio = self.nodes.compute_adjustment_ratio(line_start, breakpoint, line, lengths)
@@ -70,6 +72,8 @@ class Typesetter:
                 else:
                     pass
             line_start = breakpoint + 1
+
+            y += self.descent + self.line_gap
 
 def main(text, width, debug, filename):
     surface = cairo.PDFSurface(filename, 1000, 1000)
