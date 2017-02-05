@@ -1,7 +1,3 @@
-from __future__ import print_function
-
-import sys
-
 import harfbuzz as hb
 import qahirah as qh
 import texlib.wrap as texwrap
@@ -114,4 +110,5 @@ def main(text, width, debug, filename):
     typesetter.output()
 
 if __name__ == "__main__":
+    import sys
     main(sys.argv[1], int(sys.argv[2]), int(sys.argv[3]), sys.argv[4])
