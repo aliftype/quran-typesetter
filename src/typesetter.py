@@ -2,8 +2,12 @@ from __future__ import print_function
 
 import sys
 
+import harfbuzz as hb
 import qahirah as qh
 import texlib.wrap as texwrap
+
+ft = qh.get_ft_lib()
+
 
 class Typesetter:
     MARGIN = 10
@@ -14,14 +18,20 @@ class Typesetter:
         self.height = height
         self.debug = debug
 
+        ft_face = ft.find_face("Serif")
+        ft_face.set_char_size(size=20, resolution=qh.base_dpi)
+        self.font = hb.Font.ft_create(ft_face)
+        self.buffer = hb.Buffer.create()
+
         cr = self.cr = qh.Context.create(surface)
-        cr.font_face = qh.FontFace.create_for_pattern("Serif")
+        cr.font_face = qh.FontFace.create_for_ft_face(ft_face)
         cr.set_font_size(20)
 
-        self.ascent = cr.font_extents.ascent
-        self.descent = cr.font_extents.descent
-        height = cr.font_extents.height
-        self.line_gap = height - self.ascent - self.descent
+        font_extents = self.font.get_h_extents()
+
+        self.ascent = font_extents.ascender
+        self.descent = -font_extents.descender
+        self.line_gap = font_extents.line_gap
 
     def output(self):
         self._create_nodes()
@@ -36,15 +46,34 @@ class Typesetter:
         space_adv = self.cr.text_extents(" ")[4]
         space_glue = texwrap.Glue(space_adv, space_adv / 2, space_adv / 2)
 
-        for ch in self.text:
-            if ch in " ":
+        buf = self.buffer
+        font = self.font
+
+        word = ""
+        text = self.text + " " # XXX: hack
+        for ch in text:
+            if ch in " \u00A0":
+                buf.reset()
+                buf.add_str(word)
+               #buf.direction = hb.HARFBUZZ.DIRECTION_RTL
+               #buf.script = hb.HARFBUZZ.SCRIPT_ARABIC
+               #buf.language = hb.Language.from_string("ar")
+                buf.direction = hb.HARFBUZZ.DIRECTION_LTR
+                buf.script = hb.HARFBUZZ.SCRIPT_LATIN
+                buf.language = hb.Language.from_string("en")
+
+                hb.shape(font, buf)
+                glyphs, pos = buf.get_glyphs()
+
+                nodes.append(texwrap.Box(pos.x, glyphs))
+                if ch == "\u00A0":
+                    nodes.append(texwrap.Penalty(0, texwrap.INFINITY))
                 nodes.append(space_glue)
-            elif ch == "\u00A0": # No-Break Space.
-                nodes.append(texwrap.Penalty(0, texwrap.INFINITY))
-                nodes.append(space_glue)
+                word = ""
             else:
-                chw = self.cr.text_extents(ch)[4]
-                nodes.append(texwrap.Box(chw, ch))
+                word += ch
+
+        nodes.pop() # XXX: hack, see above
         nodes.add_closing_penalty()
 
     def _compute_breaks(self):
@@ -57,10 +86,10 @@ class Typesetter:
         lengths = [self.width]
         line_start = 0
         line = 0
-        y = self.MARGIN
+        pos = qh.Vector(self.MARGIN, self.MARGIN)
         for breakpoint in self.breaks[1:]:
-            y += self.ascent
-            x = self.MARGIN
+            pos.y += self.ascent
+            pos.x = self.MARGIN
 
             ratio = self.nodes.compute_adjustment_ratio(line_start, breakpoint, line, lengths)
             line += 1
@@ -68,16 +97,17 @@ class Typesetter:
                 box = self.nodes[i]
                 if box.is_glue():
                     width = box.compute_width(ratio)
-                    x += width
+                    pos.x += width
                 elif box.is_box():
-                    self.cr.move_to((x, y))
-                    self.cr.show_text(box.character)
-                    x += box.width
+                    for glyph in box.character:
+                        glyph.pos += pos
+                    self.cr.show_glyphs(box.character)
+                    pos.x += box.width
                 else:
                     pass
             line_start = breakpoint + 1
 
-            y += self.descent + self.line_gap
+            pos.y += self.descent + self.line_gap
 
 def main(text, width, debug, filename):
     surface = qh.PDFSurface.create(filename, (1000, 1000))
