@@ -20,7 +20,7 @@ class Typesetter:
         self.right_margin = right_margin
         self.debug = debug
 
-        ft_face = ft.find_face("Serif")
+        ft_face = ft.find_face("Amiri Quran")
         ft_face.set_char_size(size=font_size, resolution=qh.base_dpi)
         self.font = hb.Font.ft_create(ft_face)
         self.buffer = hb.Buffer.create()
