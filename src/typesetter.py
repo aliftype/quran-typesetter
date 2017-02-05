@@ -55,12 +55,9 @@ class Typesetter:
             if ch in " \u00A0":
                 buf.reset()
                 buf.add_str(word)
-               #buf.direction = hb.HARFBUZZ.DIRECTION_RTL
-               #buf.script = hb.HARFBUZZ.SCRIPT_ARABIC
-               #buf.language = hb.Language.from_string("ar")
-                buf.direction = hb.HARFBUZZ.DIRECTION_LTR
-                buf.script = hb.HARFBUZZ.SCRIPT_LATIN
-                buf.language = hb.Language.from_string("en")
+                buf.direction = hb.HARFBUZZ.DIRECTION_RTL
+                buf.script = hb.HARFBUZZ.SCRIPT_ARABIC
+                buf.language = hb.Language.from_string("ar")
 
                 hb.shape(font, buf)
                 glyphs, pos = buf.get_glyphs()
@@ -86,10 +83,10 @@ class Typesetter:
         lengths = [self.width]
         line_start = 0
         line = 0
-        pos = qh.Vector(self.MARGIN, self.MARGIN)
+        pos = qh.Vector(1000 - self.MARGIN, self.MARGIN)
         for breakpoint in self.breaks[1:]:
             pos.y += self.ascent
-            pos.x = self.MARGIN
+            pos.x = 1000 - self.MARGIN
 
             ratio = self.nodes.compute_adjustment_ratio(line_start, breakpoint, line, lengths)
             line += 1
@@ -97,12 +94,12 @@ class Typesetter:
                 box = self.nodes[i]
                 if box.is_glue():
                     width = box.compute_width(ratio)
-                    pos.x += width
+                    pos.x -= width
                 elif box.is_box():
+                    pos.x -= box.width
                     for glyph in box.character:
                         glyph.pos += pos
                     self.cr.show_glyphs(box.character)
-                    pos.x += box.width
                 else:
                     pass
             line_start = breakpoint + 1
