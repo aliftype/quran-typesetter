@@ -35,6 +35,9 @@ class Typesetter:
         self._draw_output()
 
     def _shape_and_append_word(self, word):
+        if not word:
+            return
+
         self.buffer.reset()
         self.buffer.add_str(word)
         self.buffer.direction = hb.HARFBUZZ.DIRECTION_RTL
@@ -57,8 +60,7 @@ class Typesetter:
         font = self.font
 
         word = ""
-        text = self.text + " " # XXX: hack
-        for ch in text:
+        for ch in self.text:
             if ch in " \u00A0":
                 self._shape_and_append_word(word)
 
@@ -68,8 +70,8 @@ class Typesetter:
                 word = ""
             else:
                 word += ch
+        self._shape_and_append_word(word) # last word
 
-        nodes.pop() # XXX: hack, see above
         nodes.add_closing_penalty()
 
     def _compute_breaks(self):
