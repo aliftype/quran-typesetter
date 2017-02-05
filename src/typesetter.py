@@ -7,11 +7,12 @@ ft = qh.get_ft_lib()
 
 class Typesetter:
 
-    def __init__(self, text, surface, font_size, leading, text_width,
-                 page_width, page_height, top_margin, right_margin,
+    def __init__(self, text, surface, font_size, leading, lines_per_page,
+                 text_width, page_width, page_height, top_margin, right_margin,
                  debug=False):
         self.text = text
         self.leading = leading
+        self.lines_per_page = lines_per_page
         self.text_width = text_width
         self.page_width = page_width
         self.page_height = page_height
@@ -32,7 +33,6 @@ class Typesetter:
         self._create_nodes()
         self._compute_breaks()
         self._draw_output()
-        self.cr.show_page()
 
     def _create_nodes(self):
         nodes = self.nodes = texwrap.ObjectList()
@@ -99,11 +99,16 @@ class Typesetter:
 
             pos.y += self.leading
 
+            if line % self.lines_per_page == 0:
+                self.cr.show_page()
+                pos.y = self.top_margin
+
 def main(text, filename):
     font_size = 10
     leading = 29 # ~0.4in
 
     text_width = 205 # ~2.84in
+    lines_per_page = 12
 
     top_margin = 105 # ~1.46, from top of page to first baseline
     right_margin = 100 # ~1.4in
@@ -113,8 +118,9 @@ def main(text, filename):
 
     surface = qh.PDFSurface.create(filename, (page_width, page_height))
 
-    typesetter = Typesetter(text, surface, font_size, leading, text_width,
-                            page_width, page_height, top_margin, right_margin)
+    typesetter = Typesetter(text, surface, font_size, leading, lines_per_page,
+                            text_width, page_width, page_height,
+                            top_margin, right_margin)
     typesetter.output()
 
 if __name__ == "__main__":
