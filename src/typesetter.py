@@ -61,7 +61,7 @@ class Typesetter:
 
         word = ""
         for ch in self.text:
-            if ch in " \u00A0":
+            if ch in (" ", "\n", "\u00A0"):
                 self._shape_and_append_word(word)
 
                 if ch == "\u00A0":
