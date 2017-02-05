@@ -7,8 +7,11 @@ ft = qh.get_ft_lib()
 
 class Typesetter:
 
-    def __init__(self, text, surface, text_width, page_width, page_height, top_margin, right_margin, debug=False):
+    def __init__(self, text, surface, font_size, leading, text_width,
+                 page_width, page_height, top_margin, right_margin,
+                 debug=False):
         self.text = text
+        self.leading = leading
         self.text_width = text_width
         self.page_width = page_width
         self.page_height = page_height
@@ -17,19 +20,13 @@ class Typesetter:
         self.debug = debug
 
         ft_face = ft.find_face("Serif")
-        ft_face.set_char_size(size=20, resolution=qh.base_dpi)
+        ft_face.set_char_size(size=font_size, resolution=qh.base_dpi)
         self.font = hb.Font.ft_create(ft_face)
         self.buffer = hb.Buffer.create()
 
         cr = self.cr = qh.Context.create(surface)
         cr.font_face = qh.FontFace.create_for_ft_face(ft_face)
-        cr.set_font_size(20)
-
-        font_extents = self.font.get_h_extents()
-
-        self.ascent = font_extents.ascender
-        self.descent = -font_extents.descender
-        self.line_gap = font_extents.line_gap
+        cr.set_font_size(font_size)
 
     def output(self):
         self._create_nodes()
@@ -73,7 +70,7 @@ class Typesetter:
 
     def _compute_breaks(self):
         lengths = [self.text_width]
-        self.breaks = self.nodes.compute_breakpoints(lengths)
+        self.breaks = self.nodes.compute_breakpoints(lengths, tolerance=2)
 
     def _draw_output(self):
         self.cr.set_source_colour(qh.Colour.grey(0))
@@ -81,9 +78,8 @@ class Typesetter:
         lengths = [self.text_width]
         line_start = 0
         line = 0
-        pos = qh.Vector(self.page_width - self.right_margin, self.top_margin)
+        pos = qh.Vector(0, self.top_margin)
         for breakpoint in self.breaks[1:]:
-            pos.y += self.ascent
             pos.x = self.page_width - self.right_margin
 
             ratio = self.nodes.compute_adjustment_ratio(line_start, breakpoint, line, lengths)
@@ -101,18 +97,26 @@ class Typesetter:
                     pass
             line_start = breakpoint + 1
 
-            pos.y += self.descent + self.line_gap
+            pos.y += self.leading
 
-def main(text, text_width, debug, filename):
-    top_margin = 10
-    right_margin = 10
-    page_width = text_width + right_margin * 2
-    page_height = 1000
+def main(text, filename):
+    font_size = 10
+    leading = 29 # ~0.4in
+
+    text_width = 205 # ~2.84in
+
+    top_margin = 105 # ~1.46, from top of page to first baseline
+    right_margin = 100 # ~1.4in
+
+    page_width = 396 # 5.5in
+    page_height = 540 # 7.5in
+
     surface = qh.PDFSurface.create(filename, (page_width, page_height))
 
-    typesetter = Typesetter(text, surface, text_width, page_width, page_height, top_margin, right_margin, debug)
+    typesetter = Typesetter(text, surface, font_size, leading, text_width,
+                            page_width, page_height, top_margin, right_margin)
     typesetter.output()
 
 if __name__ == "__main__":
     import sys
-    main(sys.argv[1], int(sys.argv[2]), int(sys.argv[3]), sys.argv[4])
+    main(sys.argv[1], sys.argv[4])
