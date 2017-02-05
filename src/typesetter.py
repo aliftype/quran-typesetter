@@ -8,10 +8,11 @@ ft = qh.get_ft_lib()
 class Typesetter:
     MARGIN = 10
 
-    def __init__(self, text, surface, width, height, debug=False):
+    def __init__(self, text, surface, text_width, page_width, page_height, debug=False):
         self.text = text
-        self.width = width
-        self.height = height
+        self.text_width = text_width
+        self.page_width = page_width
+        self.page_height = page_height
         self.debug = debug
 
         ft_face = ft.find_face("Serif")
@@ -70,27 +71,26 @@ class Typesetter:
         nodes.add_closing_penalty()
 
     def _compute_breaks(self):
-        lengths = [self.width]
+        lengths = [self.text_width]
         self.breaks = self.nodes.compute_breakpoints(lengths)
 
     def _draw_output(self):
         self.cr.set_source_colour(qh.Colour.grey(0))
 
-        lengths = [self.width]
+        lengths = [self.text_width]
         line_start = 0
         line = 0
-        pos = qh.Vector(1000 - self.MARGIN, self.MARGIN)
+        pos = qh.Vector(self.page_width - self.MARGIN, self.MARGIN)
         for breakpoint in self.breaks[1:]:
             pos.y += self.ascent
-            pos.x = 1000 - self.MARGIN
+            pos.x = self.page_width - self.MARGIN
 
             ratio = self.nodes.compute_adjustment_ratio(line_start, breakpoint, line, lengths)
             line += 1
             for i in range(line_start, breakpoint):
                 box = self.nodes[i]
                 if box.is_glue():
-                    width = box.compute_width(ratio)
-                    pos.x -= width
+                    pos.x -= box.compute_width(ratio)
                 elif box.is_box():
                     pos.x -= box.width
                     for glyph in box.character:
@@ -102,11 +102,12 @@ class Typesetter:
 
             pos.y += self.descent + self.line_gap
 
-def main(text, width, debug, filename):
-    surface = qh.PDFSurface.create(filename, (1000, 1000))
+def main(text, text_width, debug, filename):
+    page_width = 1000
+    page_height = 1000
+    surface = qh.PDFSurface.create(filename, (page_width, page_height))
 
-    height = 1000
-    typesetter = Typesetter(text, surface, width, height, debug)
+    typesetter = Typesetter(text, surface, text_width, page_width, page_height, debug)
     typesetter.output()
 
 if __name__ == "__main__":
