@@ -34,6 +34,18 @@ class Typesetter:
         self._compute_breaks()
         self._draw_output()
 
+    def _shape_and_append_word(self, word):
+        self.buffer.reset()
+        self.buffer.add_str(word)
+        self.buffer.direction = hb.HARFBUZZ.DIRECTION_RTL
+        self.buffer.script = hb.HARFBUZZ.SCRIPT_ARABIC
+        self.buffer.language = hb.Language.from_string("ar")
+
+        hb.shape(self.font, self.buffer)
+
+        glyphs, pos = self.buffer.get_glyphs()
+        self.nodes.append(texwrap.Box(pos.x, glyphs))
+
     def _create_nodes(self):
         nodes = self.nodes = texwrap.ObjectList()
         nodes.debug = self.debug
@@ -48,16 +60,8 @@ class Typesetter:
         text = self.text + " " # XXX: hack
         for ch in text:
             if ch in " \u00A0":
-                buf.reset()
-                buf.add_str(word)
-                buf.direction = hb.HARFBUZZ.DIRECTION_RTL
-                buf.script = hb.HARFBUZZ.SCRIPT_ARABIC
-                buf.language = hb.Language.from_string("ar")
+                self._shape_and_append_word(word)
 
-                hb.shape(font, buf)
-                glyphs, pos = buf.get_glyphs()
-
-                nodes.append(texwrap.Box(pos.x, glyphs))
                 if ch == "\u00A0":
                     nodes.append(texwrap.Penalty(0, texwrap.INFINITY))
                 nodes.append(space_glue)
