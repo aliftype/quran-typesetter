@@ -38,7 +38,7 @@ class Typesetter:
         if not word:
             return
 
-        self.buffer.reset()
+        self.buffer.clear_contents()
         self.buffer.add_str(word)
         self.buffer.direction = hb.HARFBUZZ.DIRECTION_RTL
         self.buffer.script = hb.HARFBUZZ.SCRIPT_ARABIC
