@@ -24,6 +24,7 @@ class Typesetter:
         self._create_nodes()
         self._compute_breaks()
         self._draw_output()
+        self.cr.show_page()
 
     def _create_nodes(self):
         nodes = self.nodes = texwrap.ObjectList()
@@ -71,13 +72,11 @@ class Typesetter:
             line_start = breakpoint + 1
 
 def main(text, width, debug, filename):
-    surface = cairo.ImageSurface(cairo.FORMAT_ARGB32, 1000, 1000)
+    surface = cairo.PDFSurface(filename, 1000, 1000)
 
     height = 1000
     typesetter = Typesetter(text, surface, width, height, debug)
     typesetter.output()
-
-    surface.write_to_png(filename)
 
 if __name__ == "__main__":
     main(sys.argv[1], int(sys.argv[2]), int(sys.argv[3]), sys.argv[4])
