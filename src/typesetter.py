@@ -2,7 +2,7 @@ from __future__ import print_function
 
 import sys
 
-import cairo
+import qahirah as qh
 import texlib.wrap as texwrap
 
 class Typesetter:
@@ -14,11 +14,13 @@ class Typesetter:
         self.height = height
         self.debug = debug
 
-        cr = self.cr = cairo.Context(surface)
-        cr.select_font_face("Serif", cairo.FONT_SLANT_NORMAL, cairo.FONT_WEIGHT_NORMAL)
+        cr = self.cr = qh.Context.create(surface)
+        cr.font_face = qh.FontFace.create_for_pattern("Serif")
         cr.set_font_size(20)
 
-        self.ascent, self.descent, height = cr.font_extents()[:3]
+        self.ascent = cr.font_extents.ascent
+        self.descent = cr.font_extents.descent
+        height = cr.font_extents.height
         self.line_gap = height - self.ascent - self.descent
 
     def output(self):
@@ -50,7 +52,7 @@ class Typesetter:
         self.breaks = self.nodes.compute_breakpoints(lengths)
 
     def _draw_output(self):
-        self.cr.set_source_rgb(0, 0, 0)
+        self.cr.set_source_colour(qh.Colour.grey(0))
 
         lengths = [self.width]
         line_start = 0
@@ -68,7 +70,7 @@ class Typesetter:
                     width = box.compute_width(ratio)
                     x += width
                 elif box.is_box():
-                    self.cr.move_to(x, y)
+                    self.cr.move_to((x, y))
                     self.cr.show_text(box.character)
                     x += box.width
                 else:
@@ -78,7 +80,7 @@ class Typesetter:
             y += self.descent + self.line_gap
 
 def main(text, width, debug, filename):
-    surface = cairo.PDFSurface(filename, 1000, 1000)
+    surface = qh.PDFSurface.create(filename, (1000, 1000))
 
     height = 1000
     typesetter = Typesetter(text, surface, width, height, debug)
