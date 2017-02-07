@@ -61,7 +61,6 @@ class Typesetter:
         self.lines_per_page = settings.lines_per_page
         self.text_width     = settings.text_width
         self.page_width     = settings.page_width
-        self.page_height    = settings.page_height
         self.top_margin     = settings.top_margin
         self.right_margin   = settings.right_margin
 
