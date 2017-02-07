@@ -5,22 +5,51 @@ import texlib.wrap as texwrap
 ft = qh.get_ft_lib()
 
 
+class Settings:
+    """Class holding document wide settings."""
+
+    def __init__(self):
+        self.lines_per_page = 0
+        self.text_width     = 0
+        self.page_width     = 0
+        self.page_height    = 0
+        self.top_margin     = 0
+        self.right_margin   = 0
+        self.body_font      = ""
+        self.body_font_size = 0
+        self.leading        = 0
+
+class Document:
+    """Class representing the main document and holding document-wide settings
+       and state."""
+
+    def __init__(self, surface, settings):
+        self.surface = surface
+        self.settings = settings
+        self.current_line = 0
+        self.current_page = 0
+
+    def chapter(self, text, number, opening=True):
+        typesetter = Typesetter(text,
+                                self.surface,
+                                self.settings.body_font,
+                                self.settings.body_font_size,
+                                self.settings)
+        typesetter.output()
+
 class Typesetter:
 
-    def __init__(self, text, surface, font_size, leading, lines_per_page,
-                 text_width, page_width, page_height, top_margin, right_margin,
-                 debug=False):
-        self.text = text
-        self.leading = leading
-        self.lines_per_page = lines_per_page
-        self.text_width = text_width
-        self.page_width = page_width
-        self.page_height = page_height
-        self.top_margin = top_margin
-        self.right_margin = right_margin
-        self.debug = debug
+    def __init__(self, text, surface, font_name, font_size, settings):
+        self.text           = text
+        self.leading        = settings.leading
+        self.lines_per_page = settings.lines_per_page
+        self.text_width     = settings.text_width
+        self.page_width     = settings.page_width
+        self.page_height    = settings.page_height
+        self.top_margin     = settings.top_margin
+        self.right_margin   = settings.right_margin
 
-        ft_face = ft.find_face("Amiri Quran")
+        ft_face = ft.find_face(font_name)
         ft_face.set_char_size(size=font_size, resolution=qh.base_dpi)
         self.font = hb.Font.ft_create(ft_face)
         self.buffer = hb.Buffer.create()
@@ -54,7 +83,6 @@ class Typesetter:
 
     def _create_nodes(self):
         nodes = self.nodes = texwrap.ObjectList()
-        nodes.debug = self.debug
 
         space_adv = self.cr.text_extents(" ")[4]
         space_glue = texwrap.Glue(space_adv, space_adv / 2, space_adv / 2)
@@ -121,24 +149,24 @@ class Typesetter:
                 pos.y = self.top_margin
 
 def main(text, filename):
-    font_size = 10
-    leading = 29 # ~0.4in
+    settings = Settings()
+    settings.body_font = "Amiri Quran"
+    settings.body_font_size = 10
+    settings.leading = 29 # ~0.4in
 
-    text_width = 205 # ~2.84in
-    lines_per_page = 12
+    settings.text_width = 205 # ~2.84in
+    settings.lines_per_page = 12
 
-    top_margin = 105 # ~1.46, from top of page to first baseline
-    right_margin = 100 # ~1.4in
+    settings.top_margin = 105 # ~1.46, from top of page to first baseline
+    settings.right_margin = 100 # ~1.4in
 
-    page_width = 396 # 5.5in
-    page_height = 540 # 7.5in
+    settings.page_width = 396 # 5.5in
+    settings.page_height = 540 # 7.5in
 
-    surface = qh.PDFSurface.create(filename, (page_width, page_height))
+    surface = qh.PDFSurface.create(filename, (settings.page_width, settings.page_height))
 
-    typesetter = Typesetter(text, surface, font_size, leading, lines_per_page,
-                            text_width, page_width, page_height,
-                            top_margin, right_margin)
-    typesetter.output()
+    document = Document(surface, settings)
+    document.chapter(text, 0)
 
 if __name__ == "__main__":
     import sys
