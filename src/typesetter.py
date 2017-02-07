@@ -106,9 +106,10 @@ class Typesetter:
                     pos.x -= box.compute_width(ratio)
                 elif box.is_box():
                     pos.x -= box.width
-                    for glyph in box.character:
-                        glyph.pos += pos
+                    self.cr.save()
+                    self.cr.translate(pos)
                     self.cr.show_glyphs(box.character)
+                    self.cr.restore()
                 else:
                     pass
             line_start = breakpoint + 1
