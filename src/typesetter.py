@@ -19,6 +19,13 @@ class Settings:
         self.body_font_size = 0
         self.leading        = 0
 
+class State:
+    """Class holding document wide state."""
+
+    def __init__(self):
+        self.line = 0
+        self.page = 0
+
 class Document:
     """Class representing the main document and holding document-wide settings
        and state."""
@@ -26,20 +33,29 @@ class Document:
     def __init__(self, surface, settings):
         self.surface = surface
         self.settings = settings
-        self.current_line = 0
-        self.current_page = 0
+        self.state = State()
 
     def chapter(self, text, number, opening=True):
+        if opening:
+            typesetter = Typesetter("\uFDFD",
+                                    self.surface,
+                                    self.settings.body_font,
+                                    self.settings.body_font_size,
+                                    self.settings,
+                                    self.state)
+            typesetter.output()
+
         typesetter = Typesetter(text,
                                 self.surface,
                                 self.settings.body_font,
                                 self.settings.body_font_size,
-                                self.settings)
+                                self.settings,
+                                self.state)
         typesetter.output()
 
 class Typesetter:
 
-    def __init__(self, text, surface, font_name, font_size, settings):
+    def __init__(self, text, surface, font_name, font_size, settings, state):
         self.text           = text
         self.leading        = settings.leading
         self.lines_per_page = settings.lines_per_page
@@ -48,6 +64,8 @@ class Typesetter:
         self.page_height    = settings.page_height
         self.top_margin     = settings.top_margin
         self.right_margin   = settings.right_margin
+
+        self.state          = state
 
         ft_face = ft.find_face(font_name)
         ft_face.set_char_size(size=font_size, resolution=qh.base_dpi)
@@ -115,7 +133,7 @@ class Typesetter:
         lengths = [self.text_width]
         line_start = 0
         line = 0
-        pos = qh.Vector(0, self.top_margin)
+        pos = qh.Vector(0, self.top_margin + self.state.line * self.leading)
         for breakpoint in self.breaks[1:]:
             offset = 0
             if line == len(self.breaks) - 2:
@@ -128,6 +146,7 @@ class Typesetter:
 
             ratio = self.nodes.compute_adjustment_ratio(line_start, breakpoint, line, lengths)
             line += 1
+            self.state.line += 1
             for i in range(line_start, breakpoint):
                 box = self.nodes[i]
                 if box.is_glue():
@@ -144,7 +163,7 @@ class Typesetter:
 
             pos.y += self.leading
 
-            if line % self.lines_per_page == 0:
+            if self.state.line % self.lines_per_page == 0:
                 self.cr.show_page()
                 pos.y = self.top_margin
 
