@@ -101,7 +101,8 @@ class Typesetter:
     def _create_nodes(self):
         nodes = self.nodes = texwrap.ObjectList()
 
-        space_adv = self.cr.text_extents(" ")[4]
+        space_gid = self.font.get_nominal_glyph(ord(" "))
+        space_adv = self.font.get_glyph_h_advance(space_gid)
         space_glue = texwrap.Glue(space_adv, space_adv / 2, space_adv / 2)
 
         buf = self.buffer
