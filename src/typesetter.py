@@ -26,7 +26,7 @@ class Typesetter:
         self.buffer = hb.Buffer.create()
 
         cr = self.cr = qh.Context.create(surface)
-        cr.font_face = qh.FontFace.create_for_ft_face(ft_face)
+        cr.set_font_face(qh.FontFace.create_for_ft_face(ft_face))
         cr.set_font_size(font_size)
 
     def output(self):
