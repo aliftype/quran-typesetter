@@ -80,13 +80,13 @@ class Typesetter:
         self._compute_breaks()
         self._draw_output()
 
-    def _shape_and_append_word(self, word):
+    def _shape_word(self, word):
         if not word:
-            return
+            return texwrap.Box(0)
 
         self.buffer.clear_contents()
         self.buffer.add_str(word)
-        if word.startswith("\u06DD"):
+        if word.startswith("\u06DD") or word.isdigit():
             self.buffer.direction = hb.HARFBUZZ.DIRECTION_LTR
         else:
             self.buffer.direction = hb.HARFBUZZ.DIRECTION_RTL
@@ -96,7 +96,7 @@ class Typesetter:
         hb.shape(self.font, self.buffer)
 
         glyphs, pos = self.buffer.get_glyphs()
-        self.nodes.append(texwrap.Box(pos.x, glyphs))
+        return texwrap.Box(pos.x, glyphs)
 
     def _create_nodes(self):
         nodes = self.nodes = texwrap.ObjectList()
@@ -111,7 +111,7 @@ class Typesetter:
         word = ""
         for ch in self.text:
             if ch in (" ", "\n", "\u00A0"):
-                self._shape_and_append_word(word)
+                self.nodes.append(self._shape_word(word))
 
                 if ch == "\u00A0":
                     nodes.append(texwrap.Penalty(0, texwrap.INFINITY))
@@ -119,13 +119,30 @@ class Typesetter:
                 word = ""
             else:
                 word += ch
-        self._shape_and_append_word(word) # last word
+        self.nodes.append(self._shape_word(word)) # last word
 
         nodes.add_closing_penalty()
 
     def _compute_breaks(self):
         lengths = [self.text_width]
         self.breaks = self.nodes.compute_breakpoints(lengths, tolerance=2)
+
+    def _format_number(self, number):
+        return "".join([chr(ord(c) + 0x0630) for c in str(number)])
+
+    def _show_page_number(self):
+        box = self._shape_word(self._format_number(self.state.page + 1))
+
+        pos = qh.Vector(0, 0)
+        pos.x = self.page_width - (self.text_width / 2) - self.right_margin
+        pos.y = self.top_margin + (self.lines_per_page + 1) * self.leading
+
+        pos.x -= box.width / 2
+
+        self.cr.save()
+        self.cr.translate(pos)
+        self.cr.show_glyphs(box.character)
+        self.cr.restore()
 
     def _draw_output(self):
         self.cr.set_source_colour(qh.Colour.grey(0))
@@ -151,7 +168,7 @@ class Typesetter:
                 box = self.nodes[i]
                 if box.is_glue():
                     pos.x -= box.compute_width(ratio)
-                elif box.is_box():
+                elif box.is_box() and box.character:
                     pos.x -= box.width
                     self.cr.save()
                     self.cr.translate(pos)
@@ -164,8 +181,10 @@ class Typesetter:
             pos.y += self.leading
 
             if self.state.line % self.lines_per_page == 0:
+                self._show_page_number()
                 self.cr.show_page()
                 pos.y = self.top_margin
+                self.state.page += 1
 
 def main(text, filename):
     settings = Settings()
