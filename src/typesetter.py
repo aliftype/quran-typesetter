@@ -75,6 +75,8 @@ class Typesetter:
         cr.set_font_face(qh.FontFace.create_for_ft_face(ft_face))
         cr.set_font_size(font_size)
 
+        self.word_cache = {}
+
     def output(self):
         self._create_nodes()
         self._compute_breaks()
@@ -84,19 +86,22 @@ class Typesetter:
         if not word:
             return texwrap.Box(0)
 
-        self.buffer.clear_contents()
-        self.buffer.add_str(word)
-        if word.startswith("\u06DD") or word.isdigit():
-            self.buffer.direction = hb.HARFBUZZ.DIRECTION_LTR
-        else:
-            self.buffer.direction = hb.HARFBUZZ.DIRECTION_RTL
-        self.buffer.script = hb.HARFBUZZ.SCRIPT_ARABIC
-        self.buffer.language = hb.Language.from_string("ar")
+        if word not in self.word_cache:
+            self.buffer.clear_contents()
+            self.buffer.add_str(word)
+            if word.startswith("\u06DD") or word.isdigit():
+                self.buffer.direction = hb.HARFBUZZ.DIRECTION_LTR
+            else:
+                self.buffer.direction = hb.HARFBUZZ.DIRECTION_RTL
+            self.buffer.script = hb.HARFBUZZ.SCRIPT_ARABIC
+            self.buffer.language = hb.Language.from_string("ar")
 
-        hb.shape(self.font, self.buffer)
+            hb.shape(self.font, self.buffer)
 
-        glyphs, pos = self.buffer.get_glyphs()
-        return texwrap.Box(pos.x, glyphs)
+            glyphs, pos = self.buffer.get_glyphs()
+            self.word_cache[word] = texwrap.Box(pos.x, glyphs)
+
+        return self.word_cache[word]
 
     def _create_nodes(self):
         nodes = self.nodes = texwrap.ObjectList()
