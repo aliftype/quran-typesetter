@@ -85,6 +85,10 @@ class Typesetter:
         self.font = hb.Font.ft_create(ft_face)
         self.buffer = hb.Buffer.create()
 
+        # Create a new FreeType face for Cairo, as sometimes cairo mangles the
+        # char size, breaking HarfBuzz positiong when it uses the same face.
+        ft_face = ft.find_face(font_name)
+        ft_face.set_char_size(size=font_size, resolution=qh.base_dpi)
         cr = self.cr = qh.Context.create(surface)
         cr.set_font_face(qh.FontFace.create_for_ft_face(ft_face))
         cr.set_font_size(font_size)
