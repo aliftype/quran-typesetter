@@ -96,6 +96,10 @@ class Typesetter:
         self._compute_breaks()
         self._draw_output()
 
+        # Show last page number.
+        # XXX: move to Document.
+        self._show_page_number()
+
     def _shape_word(self, word):
         if not word:
             return Box(0)
