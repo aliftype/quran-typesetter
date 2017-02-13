@@ -75,9 +75,10 @@ class Document:
 class Typesetter:
 
     def __init__(self, text, surface, font_name, font_size, settings, state):
-        self.text           = text
-        self.state          = state
-        self.settings       = settings
+        self.text = text
+        self.state = state
+        self.settings = settings
+        self.lengths = [self.settings.text_width]
 
         ft_face = ft.find_face(font_name)
         ft_face.set_char_size(size=font_size, resolution=qh.base_dpi)
@@ -145,8 +146,7 @@ class Typesetter:
         nodes.add_closing_penalty()
 
     def _compute_breaks(self):
-        lengths = [self.settings.text_width]
-        self.breaks = self.nodes.compute_breakpoints(lengths, tolerance=2)
+        self.breaks = self.nodes.compute_breakpoints(self.lengths, tolerance=2)
 
     def _format_number(self, number):
         return "".join([chr(ord(c) + 0x0630) for c in str(number)])
@@ -202,7 +202,6 @@ class Typesetter:
     def _draw_output(self):
         self.cr.set_source_colour(qh.Colour.grey(0))
 
-        lengths = [self.settings.text_width]
         line_start = 0
         line = 0
         pos = qh.Vector(0, self.settings.top_margin + self.state.line * self.settings.leading)
@@ -210,13 +209,11 @@ class Typesetter:
             offset = 0
             if line == len(self.breaks) - 2:
                 # center last line
-                offset = self.settings.text_width - self.nodes.measure_width(line_start,
-                                                                    breakpoint)
-                offset /= 2
+                offset = (self.settings.text_width - self.nodes.measure_width(line_start, breakpoint)) / 2
 
             pos.x = self.settings.page_width - self.settings.right_margin - offset
 
-            ratio = self.nodes.compute_adjustment_ratio(line_start, breakpoint, line, lengths)
+            ratio = self.nodes.compute_adjustment_ratio(line_start, breakpoint, line, self.lengths)
             line += 1
             self.state.line += 1
             for i in range(line_start, breakpoint):
@@ -232,8 +229,6 @@ class Typesetter:
                     if box.quarter:
                         self._show_quarter(pos.y)
                         self.state.quarter += 1
-                else:
-                    pass
             line_start = breakpoint + 1
 
             pos.y += self.settings.leading
