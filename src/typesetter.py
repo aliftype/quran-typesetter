@@ -27,16 +27,17 @@ class Settings:
     """Class holding document wide settings."""
 
     def __init__(self):
-        self.lines_per_page = 0
-        self.text_width     = 0
-        self.page_width     = 0
-        self.page_height    = 0
-        self.top_margin     = 0
-        self.right_margin   = 0
-        self.body_font      = ""
-        self.body_font_size = 0
-        self.leading        = 0
-        self.page_number_ypos = 0
+        # The defaults here roughly match “the 12-lines Mushaf”.
+        self.body_font        = "Amiri Quran"
+        self.body_font_size   = 10
+        self.lines_per_page   = 12
+        self.leading          = 29  # ~0.4in
+        self.text_width       = 205 # ~2.84in
+        self.page_width       = 396 # 5.5in
+        self.page_height      = 540 # 7.5in
+        self.top_margin       = 105 # ~1.46, from top of page to first baseline
+        self.right_margin     = 100 # ~1.4in
+        self.page_number_ypos = 460 # ~6.4in
 
     def get_page_number_pos(self):
         pos = qh.Vector(0, 0)
@@ -257,21 +258,6 @@ class Typesetter:
 
 def main(text, filename):
     settings = Settings()
-    settings.body_font = "Amiri Quran"
-    settings.body_font_size = 10
-    settings.leading = 29 # ~0.4in
-
-    settings.text_width = 205 # ~2.84in
-    settings.lines_per_page = 12
-
-    settings.top_margin = 105 # ~1.46, from top of page to first baseline
-    settings.right_margin = 100 # ~1.4in
-
-    settings.page_width = 396 # 5.5in
-    settings.page_height = 540 # 7.5in
-
-    settings.page_number_ypos = 460 # ~6.4in
-
     surface = qh.PDFSurface.create(filename, (settings.page_width, settings.page_height))
 
     document = Document(surface, settings)
