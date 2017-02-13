@@ -5,6 +5,24 @@ import texlib.wrap as texwrap
 ft = qh.get_ft_lib()
 
 
+class Box:
+    """Class representing a word. Boxes have a fixed width that doesn't change.
+    """
+
+    def __init__(self, width, glyphs=None):
+        self.width = width
+        self.stretch = self.shrink = 0
+        self.penalty = 0
+        self.flagged = 0
+
+        self.glyphs = glyphs
+        self.quarter = False
+
+    def is_glue(self):         return 0
+    def is_box(self):          return 1
+    def is_penalty(self):      return 0
+    def is_forced_break(self): return 0
+
 class Settings:
     """Class holding document wide settings."""
 
@@ -25,6 +43,7 @@ class State:
     def __init__(self):
         self.line = 0
         self.page = 0
+        self.quarter = 0
 
 class Document:
     """Class representing the main document and holding document-wide settings
@@ -65,6 +84,7 @@ class Typesetter:
         self.right_margin   = settings.right_margin
 
         self.state          = state
+        self.settings       = settings
 
         ft_face = ft.find_face(font_name)
         ft_face.set_char_size(size=font_size, resolution=qh.base_dpi)
@@ -84,7 +104,7 @@ class Typesetter:
 
     def _shape_word(self, word):
         if not word:
-            return texwrap.Box(0)
+            return Box(0)
 
         if word not in self.word_cache:
             self.buffer.clear_contents()
@@ -99,7 +119,10 @@ class Typesetter:
             hb.shape(self.font, self.buffer)
 
             glyphs, pos = self.buffer.get_glyphs()
-            self.word_cache[word] = texwrap.Box(pos.x, glyphs)
+            box = Box(pos.x, glyphs)
+            if word.startswith("\u06DE"):
+                box.quarter = True
+            self.word_cache[word] = box
 
         return self.word_cache[word]
 
@@ -146,8 +169,42 @@ class Typesetter:
 
         self.cr.save()
         self.cr.translate(pos)
-        self.cr.show_glyphs(box.character)
+        self.cr.show_glyphs(box.glyphs)
         self.cr.restore()
+
+    def _show_quarter(self, y):
+        boxes = []
+        num = self.state.quarter % 4
+        if num == 0:
+            boxes.append(self._shape_word("ربع"))
+            boxes.append(self._shape_word("الحزب"))
+        elif num == 1:
+            boxes.append(self._shape_word("نصف"))
+            boxes.append(self._shape_word("الحزب"))
+        elif num == 2:
+            boxes.append(self._shape_word("ثلاثة أرباع"))
+            boxes.append(self._shape_word("الحزب"))
+        else:
+            num = int((self.state.quarter + 1) / 4) + 1
+            boxes.append(self._shape_word("حزب"))
+            boxes.append(self._shape_word(self._format_number(num)))
+
+        line_height = self.settings.body_font_size
+        scale = .8
+
+        w = max([box.width for box in boxes])
+        x = self.page_width - self.right_margin / 2 - w / 2
+        y -= line_height / 2
+        for box in boxes:
+            offset = (w - box.width) * scale / 2
+
+            self.cr.save()
+            self.cr.translate((x + offset, y))
+            self.cr.scale((scale, scale))
+            self.cr.show_glyphs(box.glyphs)
+            self.cr.restore()
+
+            y += line_height
 
     def _draw_output(self):
         self.cr.set_source_colour(qh.Colour.grey(0))
@@ -173,12 +230,15 @@ class Typesetter:
                 box = self.nodes[i]
                 if box.is_glue():
                     pos.x -= box.compute_width(ratio)
-                elif box.is_box() and box.character:
+                elif box.is_box() and box.glyphs:
                     pos.x -= box.width
                     self.cr.save()
                     self.cr.translate(pos)
-                    self.cr.show_glyphs(box.character)
+                    self.cr.show_glyphs(box.glyphs)
                     self.cr.restore()
+                    if box.quarter:
+                        self._show_quarter(pos.y)
+                        self.state.quarter += 1
                 else:
                     pass
             line_start = breakpoint + 1
