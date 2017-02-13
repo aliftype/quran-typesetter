@@ -36,6 +36,16 @@ class Settings:
         self.body_font      = ""
         self.body_font_size = 0
         self.leading        = 0
+        self.page_number_ypos = 0
+
+    def get_page_number_pos(self):
+        pos = qh.Vector(0, 0)
+
+        # Center the number relative to the text box.
+        pos.x = self.page_width - self.text_width / 2 - self.right_margin
+        pos.y = self.page_number_ypos
+
+        return pos
 
 class State:
     """Class holding document wide state."""
@@ -162,10 +172,8 @@ class Typesetter:
     def _show_page_number(self):
         box = self._shape_word(self._format_number(self.state.page + 1))
 
-        pos = qh.Vector(0, 0)
-        pos.x = self.settings.page_width - (self.settings.text_width / 2) - self.settings.right_margin
-        pos.y = self.settings.top_margin + (self.settings.lines_per_page + 1) * self.settings.leading
-
+        pos = self.settings.get_page_number_pos()
+        # Center the box around the position
         pos.x -= box.width / 2
 
         self.cr.save()
@@ -261,6 +269,8 @@ def main(text, filename):
 
     settings.page_width = 396 # 5.5in
     settings.page_height = 540 # 7.5in
+
+    settings.page_number_ypos = 460 # ~6.4in
 
     surface = qh.PDFSurface.create(filename, (settings.page_width, settings.page_height))
 
