@@ -76,13 +76,6 @@ class Typesetter:
 
     def __init__(self, text, surface, font_name, font_size, settings, state):
         self.text           = text
-        self.leading        = settings.leading
-        self.lines_per_page = settings.lines_per_page
-        self.text_width     = settings.text_width
-        self.page_width     = settings.page_width
-        self.top_margin     = settings.top_margin
-        self.right_margin   = settings.right_margin
-
         self.state          = state
         self.settings       = settings
 
@@ -152,7 +145,7 @@ class Typesetter:
         nodes.add_closing_penalty()
 
     def _compute_breaks(self):
-        lengths = [self.text_width]
+        lengths = [self.settings.text_width]
         self.breaks = self.nodes.compute_breakpoints(lengths, tolerance=2)
 
     def _format_number(self, number):
@@ -162,8 +155,8 @@ class Typesetter:
         box = self._shape_word(self._format_number(self.state.page + 1))
 
         pos = qh.Vector(0, 0)
-        pos.x = self.page_width - (self.text_width / 2) - self.right_margin
-        pos.y = self.top_margin + (self.lines_per_page + 1) * self.leading
+        pos.x = self.settings.page_width - (self.settings.text_width / 2) - self.settings.right_margin
+        pos.y = self.settings.top_margin + (self.settings.lines_per_page + 1) * self.settings.leading
 
         pos.x -= box.width / 2
 
@@ -193,7 +186,7 @@ class Typesetter:
         scale = .8
 
         w = max([box.width for box in boxes])
-        x = self.page_width - self.right_margin / 2 - w / 2
+        x = self.settings.page_width - self.settings.right_margin / 2 - w / 2
         y -= line_height / 2
         for box in boxes:
             offset = (w - box.width) * scale / 2
@@ -209,19 +202,19 @@ class Typesetter:
     def _draw_output(self):
         self.cr.set_source_colour(qh.Colour.grey(0))
 
-        lengths = [self.text_width]
+        lengths = [self.settings.text_width]
         line_start = 0
         line = 0
-        pos = qh.Vector(0, self.top_margin + self.state.line * self.leading)
+        pos = qh.Vector(0, self.settings.top_margin + self.state.line * self.settings.leading)
         for breakpoint in self.breaks[1:]:
             offset = 0
             if line == len(self.breaks) - 2:
                 # center last line
-                offset = self.text_width - self.nodes.measure_width(line_start,
+                offset = self.settings.text_width - self.nodes.measure_width(line_start,
                                                                     breakpoint)
                 offset /= 2
 
-            pos.x = self.page_width - self.right_margin - offset
+            pos.x = self.settings.page_width - self.settings.right_margin - offset
 
             ratio = self.nodes.compute_adjustment_ratio(line_start, breakpoint, line, lengths)
             line += 1
@@ -243,12 +236,12 @@ class Typesetter:
                     pass
             line_start = breakpoint + 1
 
-            pos.y += self.leading
+            pos.y += self.settings.leading
 
-            if self.state.line % self.lines_per_page == 0:
+            if self.state.line % self.settings.lines_per_page == 0:
                 self._show_page_number()
                 self.cr.show_page()
-                pos.y = self.top_margin
+                pos.y = self.settings.top_margin
                 self.state.page += 1
 
 def main(text, filename):
