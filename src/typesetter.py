@@ -74,10 +74,11 @@ class Document:
     """Class representing the main document and holding document-wide settings
        and state."""
 
-    def __init__(self, surface, settings):
-        self.surface = surface
-        self.settings = settings
+    def __init__(self, filename):
+        self.settings = settings = Settings()
         self.state = State()
+        self.surface = qh.PDFSurface.create(filename, (settings.page_width,
+                                                       settings.page_height))
 
     def chapter(self, text, number, opening=True):
         typesetter = Typesetter(text,
@@ -323,10 +324,7 @@ class Typesetter:
                 self.state.line = 0
 
 def main(text, filename):
-    settings = Settings()
-    surface = qh.PDFSurface.create(filename, (settings.page_width, settings.page_height))
-
-    document = Document(surface, settings)
+    document = Document(filename)
     document.chapter(text, 0)
 
 if __name__ == "__main__":
