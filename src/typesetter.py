@@ -6,8 +6,7 @@ ft = qh.get_ft_lib()
 
 
 class Box:
-    """Class representing a word. Boxes have a fixed width that doesn't change.
-    """
+    """Class representing a word."""
 
     def __init__(self, width, glyphs=None):
         self.width = width
@@ -35,16 +34,20 @@ class Settings:
         self.text_width       = 205 # ~2.84in
         self.page_width       = 396 # 5.5in
         self.page_height      = 540 # 7.5in
-        self.top_margin       = 105 # ~1.46, from top of page to first baseline
+        # From top of page to first baseline.
+        self.top_margin       = 105 # ~1.46
         self.right_margin     = 100 # ~1.4in
         self.page_number_ypos = 460 # ~6.4in
 
-    def get_page_number_pos(self):
+    def get_page_number_pos(self, width):
         pos = qh.Vector(0, 0)
 
         # Center the number relative to the text box.
-        pos.x = self.page_width - self.text_width / 2 - self.right_margin
+        pos.x = self.page_width - (self.text_width / 2) - self.right_margin
         pos.y = self.page_number_ypos
+
+        # Center the box around the position
+        pos.x -= width / 2
 
         return pos
 
@@ -53,7 +56,7 @@ class Settings:
         pos.y = self.top_margin + (line * self.leading)
         pos.x = self.page_width - self.right_margin
         if width:
-            # Center line.
+            # Callers give width only for the last line, so we can center it.
             pos.x -= (self.text_width - width) / 2
 
         return pos
@@ -101,14 +104,14 @@ class Typesetter:
         self.font = hb.Font.ft_create(ft_face)
         self.buffer = hb.Buffer.create()
 
-        # Create a new FreeType face for Cairo, as sometimes cairo mangles the
-        # char size, breaking HarfBuzz positiong when it uses the same face.
+        # Create a new FreeType face for Cairo, as sometimes Cairo mangles the
+        # char size, breaking HarfBuzz positions when it uses the same face.
         ft_face = ft.find_face(font_name)
-        ft_face.set_char_size(size=font_size, resolution=qh.base_dpi)
         cr = self.cr = qh.Context.create(surface)
         cr.set_font_face(qh.FontFace.create_for_ft_face(ft_face))
         cr.set_font_size(font_size)
 
+        # Cache for shaped words.
         self.word_cache = {}
 
     def output(self):
@@ -122,12 +125,21 @@ class Typesetter:
         self._show_page_number()
 
     def _shape_word(self, word):
+        """
+        Shapes a single word and returns the corresponding box. To speed things
+        a bit, we cache the shaped words. We assume all our text is in Arabic
+        script and language. The direction is almost always right-to-left,
+        (we are cheating a bit to avoid doing proper bidirectional text as
+        it is largely superfluous for us here).
+        """
+
         if not word:
             return Box(0)
 
         if word not in self.word_cache:
             self.buffer.clear_contents()
             self.buffer.add_str(word)
+            # Everything is RTL except aya numbers and other digits-only words.
             if word.startswith("\u06DD") or word.isdigit():
                 self.buffer.direction = hb.HARFBUZZ.DIRECTION_LTR
             else:
@@ -139,15 +151,28 @@ class Typesetter:
 
             glyphs, pos = self.buffer.get_glyphs()
             box = Box(pos.x, glyphs)
+
+            # Flag boxes with “quarter” symbol, as it needs some special
+            # handling later.
             if word.startswith("\u06DE"):
                 box.quarter = True
+
             self.word_cache[word] = box
 
         return self.word_cache[word]
 
     def _create_nodes(self):
+        """
+        Converts the text to a list of boxes and glues that the line breaker
+        will work on. We basically split text into words and shape each word
+        separately then put it into a box. We don’t try to preserve the
+        context when shaping the words, as we know that our font does not
+        do anything special around spaces, which in turn allows us to cache
+        the shaped words.
+        """
         nodes = self.nodes = texwrap.ObjectList()
 
+        # Get the natural space width, and calculate its stretch and shrink.
         space_gid = self.font.get_nominal_glyph(ord(" "))
         space_adv = self.font.get_glyph_h_advance(space_gid)
         space_glue = texwrap.Glue(space_adv, space_adv / 2, space_adv / 2)
@@ -155,13 +180,17 @@ class Typesetter:
         buf = self.buffer
         font = self.font
 
+        # Split the text into words, treating space, newline and no-break space
+        # as word separators.
         word = ""
         for ch in self.text:
             if ch in (" ", "\n", "\u00A0"):
                 self.nodes.append(self._shape_word(word))
 
+                # Prohibit line breaking at no-break space.
                 if ch == "\u00A0":
                     nodes.append(texwrap.Penalty(0, texwrap.INFINITY))
+
                 nodes.append(space_glue)
                 word = ""
             else:
@@ -174,15 +203,14 @@ class Typesetter:
         self.breaks = self.nodes.compute_breakpoints(self.lengths, tolerance=2)
 
     def _format_number(self, number):
+        """Format number to Arabic-Indic digits."""
+
         number = int(number)
         return "".join([chr(ord(c) + 0x0630) for c in str(number)])
 
     def _show_page_number(self):
         box = self._shape_word(self._format_number(self.state.page))
-
-        pos = self.settings.get_page_number_pos()
-        # Center the box around the position
-        pos.x -= box.width / 2
+        pos = self.settings.get_page_number_pos(box.width)
 
         self.cr.save()
         self.cr.translate(pos)
@@ -190,29 +218,43 @@ class Typesetter:
         self.cr.restore()
 
     def _show_quarter(self, y):
+        """
+        Draw the quarter, group and part text on the margin. A group is 4
+        quarters, a part is 2 groups.
+        """
+
         boxes = []
         num = self.state.quarter % 4
         if num:
+            # A quarter.
             words = ("ربع", "نصف", "ثلاثة أرباع")
             boxes.append(self._shape_word(words[num - 1]))
             boxes.append(self._shape_word("الحزب"))
         else:
+            # A group…
             group = self._format_number((self.state.quarter / 4) + 1)
             if self.state.quarter % 8:
+                # … without a part.
                 boxes.append(self._shape_word("حزب"))
                 boxes.append(self._shape_word(group))
             else:
+                # … with a part.
                 part = self._format_number((self.state.quarter / 8) + 1)
                 boxes.append(self._shape_word("حزب %s" % group))
                 boxes.append(self._shape_word("جزء %s" % part))
 
-        line_height = self.settings.body_font_size
+        # We want the text to be smaller than the body size…
         scale = .8
+        # … and the leading to be tighter.
+        leading = self.settings.body_font_size
 
         w = max([box.width for box in boxes])
         x = self.settings.page_width - self.settings.right_margin / 2 - w / 2
-        y -= line_height / 2
+        # Center the boxes vertically around the line.
+        # XXX: should use the box height / 2
+        y -= leading / 2
         for box in boxes:
+            # Center the box horizontally relative to the others
             offset = (w - box.width) * scale / 2
 
             self.cr.save()
@@ -221,7 +263,7 @@ class Typesetter:
             self.cr.show_glyphs(box.glyphs)
             self.cr.restore()
 
-            y += line_height
+            y += leading
 
     def _show_opening(self):
         if not self.opening:
@@ -244,6 +286,7 @@ class Typesetter:
         line = 0
         for breakpoint in self.breaks[1:]:
             if line == len(self.breaks) - 2:
+                # Last line, pass the width to get a centered position.
                 width = self.nodes.measure_width(line_start, breakpoint)
                 pos = self.settings.get_line_start_pos(self.state.line, width)
             else:
@@ -252,7 +295,11 @@ class Typesetter:
             ratio = self.nodes.compute_adjustment_ratio(line_start, breakpoint, line, self.lengths)
             line += 1
             self.state.line += 1
+
             for i in range(line_start, breakpoint):
+                # We start drawing from the right edge of the text box, then
+                # move to the left, thus the subtraction instead of addition
+                # below.
                 box = self.nodes[i]
                 if box.is_glue():
                     pos.x -= box.compute_width(ratio)
@@ -265,8 +312,10 @@ class Typesetter:
                     if box.quarter:
                         self._show_quarter(pos.y)
                         self.state.quarter += 1
+
             line_start = breakpoint + 1
 
+            # The page had enough lines, start new page.
             if self.state.line % self.settings.lines_per_page == 0:
                 self._show_page_number()
                 self.cr.show_page()
