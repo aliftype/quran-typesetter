@@ -64,7 +64,7 @@ class State:
 
     def __init__(self):
         self.line = 0
-        self.page = 0
+        self.page = 1
         self.quarter = 1
 
 class Document:
@@ -178,7 +178,7 @@ class Typesetter:
         return "".join([chr(ord(c) + 0x0630) for c in str(number)])
 
     def _show_page_number(self):
-        box = self._shape_word(self._format_number(self.state.page + 1))
+        box = self._shape_word(self._format_number(self.state.page))
 
         pos = self.settings.get_page_number_pos()
         # Center the box around the position
