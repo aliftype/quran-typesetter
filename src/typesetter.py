@@ -74,13 +74,19 @@ class Document:
     """Class representing the main document and holding document-wide settings
        and state."""
 
-    def __init__(self, filename):
+    def __init__(self, filename, chapters):
         self.settings = settings = Settings()
         self.state = State()
         self.surface = qh.PDFSurface.create(filename, (settings.page_width,
                                                        settings.page_height))
 
-    def chapter(self, text, number, opening=True):
+        self.chapters = chapters
+
+    def save(self):
+        for num, chapter in enumerate(self.chapters):
+            self._output_chapter(chapter, num)
+
+    def _output_chapter(self, text, number, opening=True):
         typesetter = Typesetter(text,
                                 self.surface,
                                 self.settings.body_font,
@@ -323,12 +329,18 @@ class Typesetter:
                 self.state.page += 1
                 self.state.line = 0
 
-def main(text, filename):
-    document = Document(filename)
-    document.chapter(text, 0)
+def main(data, filename):
+    document = Document(filename, data)
+    document.save()
 
 if __name__ == "__main__":
     import sys
-    with open(sys.argv[1], "r") as textfile:
-        text = textfile.read()
-        main(text, sys.argv[2])
+    if len(sys.argv) < 3:
+        print("Usage: %s text_file [text_file2…] output.pdf" % sys.argv[0])
+        sys.exit(1)
+
+    data = []
+    for arg in sys.argv[1:-1]:
+        with open(arg, "r") as textfile:
+            data.append(textfile.read())
+    main(data, sys.argv[-1])
