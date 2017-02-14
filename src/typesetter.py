@@ -65,7 +65,7 @@ class State:
     def __init__(self):
         self.line = 0
         self.page = 0
-        self.quarter = 0
+        self.quarter = 1
 
 class Document:
     """Class representing the main document and holding document-wide settings
@@ -174,6 +174,7 @@ class Typesetter:
         self.breaks = self.nodes.compute_breakpoints(self.lengths, tolerance=2)
 
     def _format_number(self, number):
+        number = int(number)
         return "".join([chr(ord(c) + 0x0630) for c in str(number)])
 
     def _show_page_number(self):
@@ -191,19 +192,19 @@ class Typesetter:
     def _show_quarter(self, y):
         boxes = []
         num = self.state.quarter % 4
-        if num == 0:
-            boxes.append(self._shape_word("ربع"))
-            boxes.append(self._shape_word("الحزب"))
-        elif num == 1:
-            boxes.append(self._shape_word("نصف"))
-            boxes.append(self._shape_word("الحزب"))
-        elif num == 2:
-            boxes.append(self._shape_word("ثلاثة أرباع"))
+        if num:
+            words = ("ربع", "نصف", "ثلاثة أرباع")
+            boxes.append(self._shape_word(words[num - 1]))
             boxes.append(self._shape_word("الحزب"))
         else:
-            num = int((self.state.quarter + 1) / 4) + 1
-            boxes.append(self._shape_word("حزب"))
-            boxes.append(self._shape_word(self._format_number(num)))
+            group = self._format_number((self.state.quarter / 4) + 1)
+            if self.state.quarter % 8:
+                boxes.append(self._shape_word("حزب"))
+                boxes.append(self._shape_word(group))
+            else:
+                part = self._format_number((self.state.quarter / 8) + 1)
+                boxes.append(self._shape_word("حزب %s" % group))
+                boxes.append(self._shape_word("جزء %s" % part))
 
         line_height = self.settings.body_font_size
         scale = .8
