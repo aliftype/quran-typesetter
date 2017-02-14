@@ -48,6 +48,17 @@ class Settings:
 
         return pos
 
+    def get_line_start_pos(self, line, width=0):
+        pos = qh.Vector(0, 0)
+        pos.y = self.top_margin + (line * self.leading)
+        pos.x = self.page_width - self.right_margin
+        if width:
+            # Center line.
+            pos.x -= (self.text_width - width) / 2
+
+        return pos
+
+
 class State:
     """Class holding document wide state."""
 
@@ -66,30 +77,24 @@ class Document:
         self.state = State()
 
     def chapter(self, text, number, opening=True):
-        if opening:
-            typesetter = Typesetter("\uFDFD",
-                                    self.surface,
-                                    self.settings.body_font,
-                                    self.settings.body_font_size,
-                                    self.settings,
-                                    self.state)
-            typesetter.output()
-
         typesetter = Typesetter(text,
                                 self.surface,
                                 self.settings.body_font,
                                 self.settings.body_font_size,
                                 self.settings,
-                                self.state)
+                                self.state,
+                                opening)
         typesetter.output()
 
 class Typesetter:
 
-    def __init__(self, text, surface, font_name, font_size, settings, state):
+    def __init__(self, text, surface, font_name, font_size, settings, state,
+                 opening=True):
         self.text = text
         self.state = state
         self.settings = settings
         self.lengths = [self.settings.text_width]
+        self.opening = opening
 
         ft_face = ft.find_face(font_name)
         ft_face.set_char_size(size=font_size, resolution=qh.base_dpi)
@@ -107,6 +112,7 @@ class Typesetter:
         self.word_cache = {}
 
     def output(self):
+        self._show_opening()
         self._create_nodes()
         self._compute_breaks()
         self._draw_output()
@@ -216,19 +222,31 @@ class Typesetter:
 
             y += line_height
 
+    def _show_opening(self):
+        if not self.opening:
+            return
+
+        box = self._shape_word("\uFDFD")
+        pos = self.settings.get_line_start_pos(self.state.line, box.width)
+        pos.x -= box.width
+        self.cr.save()
+        self.cr.translate(pos)
+        self.cr.show_glyphs(box.glyphs)
+        self.cr.restore()
+
+        self.state.line += 1
+
     def _draw_output(self):
         self.cr.set_source_colour(qh.Colour.grey(0))
 
         line_start = 0
         line = 0
-        pos = qh.Vector(0, self.settings.top_margin + self.state.line * self.settings.leading)
         for breakpoint in self.breaks[1:]:
-            offset = 0
             if line == len(self.breaks) - 2:
-                # center last line
-                offset = (self.settings.text_width - self.nodes.measure_width(line_start, breakpoint)) / 2
-
-            pos.x = self.settings.page_width - self.settings.right_margin - offset
+                width = self.nodes.measure_width(line_start, breakpoint)
+                pos = self.settings.get_line_start_pos(self.state.line, width)
+            else:
+                pos = self.settings.get_line_start_pos(self.state.line)
 
             ratio = self.nodes.compute_adjustment_ratio(line_start, breakpoint, line, self.lengths)
             line += 1
@@ -248,13 +266,11 @@ class Typesetter:
                         self.state.quarter += 1
             line_start = breakpoint + 1
 
-            pos.y += self.settings.leading
-
             if self.state.line % self.settings.lines_per_page == 0:
                 self._show_page_number()
                 self.cr.show_page()
-                pos.y = self.settings.top_margin
                 self.state.page += 1
+                self.state.line = 0
 
 def main(text, filename):
     settings = Settings()
