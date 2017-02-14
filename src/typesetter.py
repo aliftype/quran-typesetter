@@ -98,6 +98,9 @@ class Document:
 
 class Typesetter:
 
+    # Cache for shaped words.
+    word_cache = {}
+
     def __init__(self, text, surface, font_name, font_size, settings, state,
                  opening=True):
         self.text = text
@@ -117,9 +120,6 @@ class Typesetter:
         cr = self.cr = qh.Context.create(surface)
         cr.set_font_face(qh.FontFace.create_for_ft_face(ft_face))
         cr.set_font_size(font_size)
-
-        # Cache for shaped words.
-        self.word_cache = {}
 
     def output(self):
         self._show_opening()
