@@ -272,9 +272,19 @@ class Typesetter:
 
             y += leading
 
+    def _finish_page(self):
+         self._show_page_number()
+         self.cr.show_page()
+         self.state.page += 1
+         self.state.line = 0
+
     def _show_opening(self):
         if not self.opening:
             return
+
+        # Finish the page of only one line is left.
+        if self.state.line == self.settings.lines_per_page - 1:
+            self._finish_page()
 
         box = self._shape_word("\uFDFD")
         pos = self.settings.get_line_start_pos(self.state.line, box.width)
@@ -326,11 +336,8 @@ class Typesetter:
             line_start = breakpoint + 1
 
             # The page had enough lines, start new page.
-            if self.state.line % self.settings.lines_per_page == 0:
-                self._show_page_number()
-                self.cr.show_page()
-                self.state.page += 1
-                self.state.line = 0
+            if self.state.line == self.settings.lines_per_page:
+                self._finish_page()
 
 def main(data, filename):
     document = Document(filename, data)
