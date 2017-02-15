@@ -96,42 +96,19 @@ class Document:
                                 opening)
         typesetter.output()
 
-class Typesetter:
+class Shaper:
+    """Class for turning text into boxes and glue."""
 
     # Cache for shaped words.
     word_cache = {}
 
-    def __init__(self, text, surface, font_name, font_size, settings, state,
-                 opening=True):
-        self.text = text
-        self.state = state
-        self.settings = settings
-        self.lengths = [self.settings.text_width]
-        self.opening = opening
-
+    def __init__(self, font_name, font_size):
         ft_face = ft.find_face(font_name)
         ft_face.set_char_size(size=font_size, resolution=qh.base_dpi)
         self.font = hb.Font.ft_create(ft_face)
         self.buffer = hb.Buffer.create()
 
-        # Create a new FreeType face for Cairo, as sometimes Cairo mangles the
-        # char size, breaking HarfBuzz positions when it uses the same face.
-        ft_face = ft.find_face(font_name)
-        cr = self.cr = qh.Context.create(surface)
-        cr.set_font_face(qh.FontFace.create_for_ft_face(ft_face))
-        cr.set_font_size(font_size)
-
-    def output(self):
-        self._show_opening()
-        self._create_nodes()
-        self._compute_breaks()
-        self._draw_output()
-
-        # Show last page number.
-        # XXX: move to Document.
-        self._show_page_number()
-
-    def _shape_word(self, word):
+    def shape_word(self, word):
         """
         Shapes a single word and returns the corresponding box. To speed things
         a bit, we cache the shaped words. We assume all our text is in Arabic
@@ -168,7 +145,7 @@ class Typesetter:
 
         return self.word_cache[word]
 
-    def _create_nodes(self):
+    def shape_paragraph(self, text):
         """
         Converts the text to a list of boxes and glues that the line breaker
         will work on. We basically split text into words and shape each word
@@ -177,7 +154,7 @@ class Typesetter:
         do anything special around spaces, which in turn allows us to cache
         the shaped words.
         """
-        nodes = self.nodes = texwrap.ObjectList()
+        nodes = texwrap.ObjectList()
 
         # Get the natural space width, and calculate its stretch and shrink.
         space_gid = self.font.get_nominal_glyph(ord(" "))
@@ -190,9 +167,9 @@ class Typesetter:
         # Split the text into words, treating space, newline and no-break space
         # as word separators.
         word = ""
-        for ch in self.text:
+        for ch in text:
             if ch in (" ", "\n", "\u00A0"):
-                self.nodes.append(self._shape_word(word))
+                nodes.append(self.shape_word(word))
 
                 # Prohibit line breaking at no-break space.
                 if ch == "\u00A0":
@@ -202,9 +179,46 @@ class Typesetter:
                 word = ""
             else:
                 word += ch
-        self.nodes.append(self._shape_word(word)) # last word
+        nodes.append(self.shape_word(word)) # last word
 
         nodes.add_closing_penalty()
+
+        return nodes
+
+class Typesetter:
+
+    # Cache for shaped words.
+    word_cache = {}
+
+    def __init__(self, text, surface, font_name, font_size, settings, state,
+                 opening=True):
+        self.text = text
+        self.state = state
+        self.settings = settings
+        self.lengths = [self.settings.text_width]
+        self.opening = opening
+
+        self.shaper = Shaper(font_name, font_size)
+
+        # Create a new FreeType face for Cairo, as sometimes Cairo mangles the
+        # char size, breaking HarfBuzz positions when it uses the same face.
+        ft_face = ft.find_face(font_name)
+        cr = self.cr = qh.Context.create(surface)
+        cr.set_font_face(qh.FontFace.create_for_ft_face(ft_face))
+        cr.set_font_size(font_size)
+
+    def output(self):
+        self._show_opening()
+        self._create_nodes()
+        self._compute_breaks()
+        self._draw_output()
+
+        # Show last page number.
+        # XXX: move to Document.
+        self._show_page_number()
+
+    def _create_nodes(self):
+        self.nodes = self.shaper.shape_paragraph(self.text)
 
     def _compute_breaks(self):
         self.breaks = self.nodes.compute_breakpoints(self.lengths, tolerance=2)
@@ -216,7 +230,7 @@ class Typesetter:
         return "".join([chr(ord(c) + 0x0630) for c in str(number)])
 
     def _show_page_number(self):
-        box = self._shape_word(self._format_number(self.state.page))
+        box = self.shaper.shape_word(self._format_number(self.state.page))
         pos = self.settings.get_page_number_pos(box.width)
 
         self.cr.save()
@@ -235,20 +249,20 @@ class Typesetter:
         if num:
             # A quarter.
             words = ("ربع", "نصف", "ثلاثة أرباع")
-            boxes.append(self._shape_word(words[num - 1]))
-            boxes.append(self._shape_word("الحزب"))
+            boxes.append(self.shaper.shape_word(words[num - 1]))
+            boxes.append(self.shaper.shape_word("الحزب"))
         else:
             # A group…
             group = self._format_number((self.state.quarter / 4) + 1)
             if self.state.quarter % 8:
                 # … without a part.
-                boxes.append(self._shape_word("حزب"))
-                boxes.append(self._shape_word(group))
+                boxes.append(self.shaper.shape_word("حزب"))
+                boxes.append(self.shaper.shape_word(group))
             else:
                 # … with a part.
                 part = self._format_number((self.state.quarter / 8) + 1)
-                boxes.append(self._shape_word("حزب %s" % group))
-                boxes.append(self._shape_word("جزء %s" % part))
+                boxes.append(self.shaper.shape_word("حزب %s" % group))
+                boxes.append(self.shaper.shape_word("جزء %s" % part))
 
         # We want the text to be smaller than the body size…
         scale = .8
@@ -286,7 +300,7 @@ class Typesetter:
         if self.state.line == self.settings.lines_per_page - 1:
             self._finish_page()
 
-        box = self._shape_word("\uFDFD")
+        box = self.shaper.shape_word("\uFDFD")
         pos = self.settings.get_line_start_pos(self.state.line, box.width)
         pos.x -= box.width
         self.cr.save()
