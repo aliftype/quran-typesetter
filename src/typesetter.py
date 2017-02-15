@@ -295,6 +295,9 @@ class Typesetter:
             if line == len(self.breaks) - 2:
                 # Last line, pass the width to get a centered position.
                 width = self.nodes.measure_width(line_start, breakpoint)
+                if width == 0.0:
+                    # Skip empty last line.
+                    continue
                 pos = self.settings.get_line_start_pos(self.state.line, width)
             else:
                 pos = self.settings.get_line_start_pos(self.state.line)
