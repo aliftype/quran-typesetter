@@ -172,8 +172,7 @@ class Shaper:
         nodes = texwrap.ObjectList()
 
         # Get the natural space width
-        space = self.font.get_glyph_h_advance(
-                    self.font.get_nominal_glyph(ord(" ")))
+        space = self.shape_word(" ").width
 
         buf = self.buffer
         font = self.font
