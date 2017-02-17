@@ -315,7 +315,7 @@ class Typesetter:
         self.state.line += 1
 
     def _create_lines(self):
-        lines = texwrap.ObjectList()
+        lines = []
         nodes = self.shaper.shape_paragraph(self.text)
         breaks = nodes.compute_breakpoints(self.lengths, tolerance=2)
 
