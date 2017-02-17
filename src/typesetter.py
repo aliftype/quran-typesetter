@@ -22,6 +22,22 @@ class Box:
     def is_penalty(self):      return 0
     def is_forced_break(self): return 0
 
+class Line:
+    """Class representing a line of text."""
+
+    def __init__(self, width, boxes):
+        self.width = width
+        self.stretch = self.shrink = 0
+        self.penalty = 0
+        self.flagged = 0
+
+        self.boxes = boxes
+
+    def is_glue(self):         return 0
+    def is_box(self):          return 1
+    def is_penalty(self):      return 0
+    def is_forced_break(self): return 0
+
 class Settings:
     """Class holding document wide settings."""
 
@@ -209,19 +225,11 @@ class Typesetter:
 
     def output(self):
         self._show_opening()
-        self._create_nodes()
-        self._compute_breaks()
         self._draw_output()
 
         # Show last page number.
         # XXX: move to Document.
         self._show_page_number()
-
-    def _create_nodes(self):
-        self.nodes = self.shaper.shape_paragraph(self.text)
-
-    def _compute_breaks(self):
-        self.breaks = self.nodes.compute_breakpoints(self.lengths, tolerance=2)
 
     def _format_number(self, number):
         """Format number to Arabic-Indic digits."""
@@ -310,35 +318,48 @@ class Typesetter:
 
         self.state.line += 1
 
+    def _create_lines(self):
+        lines = texwrap.ObjectList()
+        nodes = self.shaper.shape_paragraph(self.text)
+        breaks = nodes.compute_breakpoints(self.lengths, tolerance=2)
+
+        start = 0
+        for i, breakpoint in enumerate(breaks[1:]):
+            ratio = nodes.compute_adjustment_ratio(start, breakpoint, i, self.lengths)
+
+            boxes = []
+            for j in range(start, breakpoint):
+                box = nodes[j]
+                if box.is_glue():
+                    box = texwrap.Glue(box.compute_width(ratio), 0, 0)
+                boxes.append(box)
+
+            while not boxes[-1].is_box():
+                boxes.pop()
+
+            width = sum([box.width for box in boxes])
+            lines.append(Line(width, boxes))
+
+            start = breakpoint + 1
+
+        return lines
+
     def _draw_output(self):
         self.cr.set_source_colour(qh.Colour.grey(0))
 
-        line_start = 0
-        line = 0
-        for breakpoint in self.breaks[1:]:
-            if line == len(self.breaks) - 2:
-                # Last line, pass the width to get a centered position.
-                width = self.nodes.measure_width(line_start, breakpoint)
-                if width == 0.0:
-                    # Skip empty last line.
-                    continue
-                pos = self.settings.get_line_start_pos(self.state.line, width)
-            else:
-                pos = self.settings.get_line_start_pos(self.state.line)
+        lines = self._create_lines()
+        for i, line in enumerate(lines):
+            if i == len(lines) - 1 and line.width == 0.0:
+                # Skip empty last line.
+                continue
 
-            ratio = self.nodes.compute_adjustment_ratio(line_start, breakpoint, line, self.lengths)
-            line += 1
-            self.state.line += 1
-
-            for i in range(line_start, breakpoint):
-                # We start drawing from the right edge of the text box, then
+            pos = self.settings.get_line_start_pos(self.state.line, line.width)
+            for box in line.boxes:
+                # We start drawing from the right edge of the text block, and
                 # move to the left, thus the subtraction instead of addition
                 # below.
-                box = self.nodes[i]
-                if box.is_glue():
-                    pos.x -= box.compute_width(ratio)
-                elif box.is_box() and box.glyphs:
-                    pos.x -= box.width
+                pos.x -= box.width
+                if box.is_box() and box.glyphs:
                     self.cr.save()
                     self.cr.translate(pos)
                     self.cr.show_glyphs(box.glyphs)
@@ -347,8 +368,7 @@ class Typesetter:
                         self._show_quarter(pos.y)
                         self.state.quarter += 1
 
-            line_start = breakpoint + 1
-
+            self.state.line += 1
             # The page had enough lines, start new page.
             if self.state.line == self.settings.lines_per_page:
                 self._finish_page()
