@@ -202,9 +202,6 @@ class Shaper:
 
 class Typesetter:
 
-    # Cache for shaped words.
-    word_cache = {}
-
     def __init__(self, text, surface, font_name, font_size, settings, state,
                  opening=True):
         self.text = text
