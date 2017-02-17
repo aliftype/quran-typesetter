@@ -8,7 +8,7 @@ ft = qh.get_ft_lib()
 class Box:
     """Class representing a word."""
 
-    def __init__(self, width, glyphs=None):
+    def __init__(self, width, glyphs):
         self.width = width
         self.stretch = self.shrink = 0
         self.penalty = 0
@@ -133,8 +133,7 @@ class Shaper:
         it is largely superfluous for us here).
         """
 
-        if not word:
-            return Box(0)
+        assert word
 
         if word not in self.word_cache:
             self.buffer.clear_contents()
@@ -183,7 +182,7 @@ class Shaper:
         # Split the text into words, treating space, newline and no-break space
         # as word separators.
         word = ""
-        for ch in text:
+        for ch in text.strip():
             if ch in (" ", "\n", "\u00A0"):
                 nodes.append(self.shape_word(word))
 
@@ -349,17 +348,13 @@ class Typesetter:
 
         lines = self._create_lines()
         for i, line in enumerate(lines):
-            if i == len(lines) - 1 and line.width == 0.0:
-                # Skip empty last line.
-                continue
-
             pos = self.settings.get_line_start_pos(self.state.line, line.width)
             for box in line.boxes:
                 # We start drawing from the right edge of the text block, and
                 # move to the left, thus the subtraction instead of addition
                 # below.
                 pos.x -= box.width
-                if box.is_box() and box.glyphs:
+                if box.is_box():
                     self.cr.save()
                     self.cr.translate(pos)
                     self.cr.show_glyphs(box.glyphs)
