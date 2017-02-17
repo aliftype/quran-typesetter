@@ -171,10 +171,9 @@ class Shaper:
         """
         nodes = texwrap.ObjectList()
 
-        # Get the natural space width, and calculate its stretch and shrink.
-        space_gid = self.font.get_nominal_glyph(ord(" "))
-        space_adv = self.font.get_glyph_h_advance(space_gid)
-        space_glue = texwrap.Glue(space_adv, space_adv / 2, space_adv / 2)
+        # Get the natural space width
+        space = self.font.get_glyph_h_advance(
+                    self.font.get_nominal_glyph(ord(" ")))
 
         buf = self.buffer
         font = self.font
@@ -190,7 +189,7 @@ class Shaper:
                 if ch == "\u00A0":
                     nodes.append(texwrap.Penalty(0, texwrap.INFINITY))
 
-                nodes.append(space_glue)
+                nodes.append(texwrap.Glue(space, space / 2, space / 2))
                 word = ""
             else:
                 word += ch
@@ -327,7 +326,7 @@ class Typesetter:
             for j in range(start, breakpoint):
                 box = nodes[j]
                 if box.is_glue():
-                    box = texwrap.Glue(box.compute_width(ratio), 0, 0)
+                    box.width = box.compute_width(ratio)
                 boxes.append(box)
 
             while not boxes[-1].is_box():
