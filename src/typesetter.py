@@ -174,9 +174,6 @@ class Shaper:
         # Get the natural space width
         space = self.shape_word(" ").width
 
-        buf = self.buffer
-        font = self.font
-
         # Split the text into words, treating space, newline and no-break space
         # as word separators.
         word = ""
