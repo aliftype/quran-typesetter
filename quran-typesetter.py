@@ -110,7 +110,7 @@ class Document:
 
         pages = [Page([], 1)]
         lengths = [self.settings.leading * self.settings.lines_per_page]
-        breaks = lines.compute_breakpoints(lengths, tolerance=2)
+        breaks = lines.compute_breakpoints(lengths, tolerance=20)
 
         start = 0
         for i, breakpoint in enumerate(breaks[1:]):
