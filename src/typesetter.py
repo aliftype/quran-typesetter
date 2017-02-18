@@ -1,3 +1,5 @@
+import math
+
 import harfbuzz as hb
 import qahirah as qh
 import texlib.wrap as texwrap
@@ -8,8 +10,8 @@ ft = qh.get_ft_lib()
 class Box:
     """Class representing a word."""
 
-    def __init__(self, width, glyphs):
-        self.width = width
+    def __init__(self, advance, glyphs):
+        self.advance = advance
         self.stretch = self.shrink = 0
         self.penalty = 0
         self.flagged = 0
@@ -25,7 +27,8 @@ class Box:
 class Line:
     """Class representing a line of text."""
 
-    def __init__(self, width, boxes):
+    def __init__(self, advance, width, boxes):
+        self.advance = advance
         self.width = width
         self.stretch = self.shrink = 0
         self.penalty = 0
@@ -38,6 +41,13 @@ class Line:
     def is_penalty(self):      return 0
     def is_forced_break(self): return 0
 
+class Page:
+    """Class representing a page of text."""
+
+    def __init__(self, lines, number):
+        self.lines = lines
+        self.number = number
+
 class Settings:
     """Class holding document wide settings."""
 
@@ -47,7 +57,7 @@ class Settings:
         self.body_font_size   = 10
         self.lines_per_page   = 12
         self.leading          = 29  # ~0.4in
-        self.text_width       = 205 # ~2.84in
+        self.text_widths      = [205] # ~2.84in
         self.page_width       = 396 # 5.5in
         self.page_height      = 540 # 7.5in
         # From top of page to first baseline.
@@ -55,11 +65,17 @@ class Settings:
         self.right_margin     = 100 # ~1.4in
         self.page_number_ypos = 460 # ~6.4in
 
+    def get_text_width(self, line):
+        if line >= len(self.text_widths):
+            line = -1
+        return self.text_widths[line]
+
     def get_page_number_pos(self, width):
         pos = qh.Vector(0, 0)
 
         # Center the number relative to the text box.
-        pos.x = self.page_width - (self.text_width / 2) - self.right_margin
+        text_width = self.get_text_width(self.lines_per_page - 1)
+        pos.x = self.page_width - (text_width / 2) - self.right_margin
         pos.y = self.page_number_ypos
 
         # Center the box around the position
@@ -71,9 +87,11 @@ class Settings:
         pos = qh.Vector(0, 0)
         pos.y = self.top_margin + (line * self.leading)
         pos.x = self.page_width - self.right_margin
-        if width:
-            # Callers give width only for the last line, so we can center it.
-            pos.x -= (self.text_width - width) / 2
+
+        # Center lines not equal to text width.
+        text_width = self.get_text_width(line)
+        if not math.isclose(width, text_width):
+            pos.x -= (text_width - width) / 2
 
         return pos
 
@@ -82,8 +100,6 @@ class State:
     """Class holding document wide state."""
 
     def __init__(self):
-        self.line = 0
-        self.page = 1
         self.quarter = 1
 
 class Document:
@@ -95,21 +111,87 @@ class Document:
         self.state = State()
         self.surface = qh.PDFSurface.create(filename, (settings.page_width,
                                                        settings.page_height))
+        self.shaper = Shaper(settings.body_font, settings.body_font_size)
 
         self.chapters = chapters
 
     def save(self):
-        for num, chapter in enumerate(self.chapters):
-            self._output_chapter(chapter, num)
+        lines = self._create_lines()
+        pages = self._create_pages(lines)
 
-    def _output_chapter(self, text, number, opening=True):
-        typesetter = Typesetter(text,
+        for page in pages:
+            self._output_page(page)
+
+    def _create_lines(self):
+        """Processes each chapter and creates lines for the whole document."""
+
+        lines = texwrap.ObjectList()
+        for num, chapter in enumerate(self.chapters):
+            lines.extend(self._process_chapter(chapter, num))
+        lines.add_closing_penalty()
+
+        return lines
+
+    def _create_pages(self, lines):
+        """Breaks the lines into pages"""
+
+        pages = []
+        lengths = [self.settings.leading * self.settings.lines_per_page]
+        breaks = lines.compute_breakpoints(lengths, tolerance=2)
+
+        start = 0
+        for i, breakpoint in enumerate(breaks[1:]):
+            page = Page([], i + 1)
+            for j in range(start, breakpoint):
+                line = lines[j]
+                if line.is_box():
+                    page.lines.append(line)
+            pages.append(page)
+            start = breakpoint + 1
+
+        return pages
+
+    def _process_chapter(self, text, num, opening=True):
+        """Shapes the text and breaks it into lines."""
+
+        lengths = self.settings.text_widths
+        nodes = self.shaper.shape_paragraph(text)
+        breaks = nodes.compute_breakpoints(lengths, tolerance=2)
+
+        lines = []
+        if opening:
+            box = self.shaper.shape_word("\uFDFD")
+            lines.append(Line(self.settings.leading, box.advance, [box]))
+
+        start = 0
+        for i, breakpoint in enumerate(breaks[1:]):
+            ratio = nodes.compute_adjustment_ratio(start, breakpoint, i,
+                                                   lengths)
+
+            line = Line(self.settings.leading, 0, [])
+            for j in range(start, breakpoint):
+                box = nodes[j]
+                if box.is_glue():
+                    box.advance = box.compute_width(ratio)
+                line.boxes.append(box)
+
+            while not line.boxes[-1].is_box():
+                line.boxes.pop()
+
+            line.width = sum([box.advance for box in line.boxes])
+            lines.append(line)
+            lines.append(texwrap.Glue(0, 0, 0))
+
+            start = breakpoint + 1
+
+        return lines
+
+    def _output_page(self, page):
+        typesetter = Typesetter(page,
                                 self.surface,
-                                self.settings.body_font,
-                                self.settings.body_font_size,
+                                self.shaper,
                                 self.settings,
-                                self.state,
-                                opening)
+                                self.state)
         typesetter.output()
 
 class Shaper:
@@ -171,8 +253,8 @@ class Shaper:
         """
         nodes = texwrap.ObjectList()
 
-        # Get the natural space width
-        space = self.shape_word(" ").width
+        # Get the natural space advance
+        space = self.shape_word(" ").advance
 
         # Split the text into words, treating space, newline and no-break space
         # as word separators.
@@ -197,30 +279,22 @@ class Shaper:
 
 class Typesetter:
 
-    def __init__(self, text, surface, font_name, font_size, settings, state,
-                 opening=True):
-        self.text = text
-        self.state = state
+    def __init__(self, page, surface, shaper, settings, state):
+        self.page = page
+        self.shaper = shaper
         self.settings = settings
-        self.lengths = [self.settings.text_width]
-        self.opening = opening
-
-        self.shaper = Shaper(font_name, font_size)
+        self.state = state
+        self.lengths = self.settings.text_widths
 
         # Create a new FreeType face for Cairo, as sometimes Cairo mangles the
         # char size, breaking HarfBuzz positions when it uses the same face.
-        ft_face = ft.find_face(font_name)
+        ft_face = ft.find_face(settings.body_font)
         cr = self.cr = qh.Context.create(surface)
         cr.set_font_face(qh.FontFace.create_for_ft_face(ft_face))
-        cr.set_font_size(font_size)
+        cr.set_font_size(settings.body_font_size)
 
     def output(self):
-        self._show_opening()
         self._draw_output()
-
-        # Show last page number.
-        # XXX: move to Document.
-        self._show_page_number()
 
     def _format_number(self, number):
         """Format number to Arabic-Indic digits."""
@@ -229,8 +303,8 @@ class Typesetter:
         return "".join([chr(ord(c) + 0x0630) for c in str(number)])
 
     def _show_page_number(self):
-        box = self.shaper.shape_word(self._format_number(self.state.page))
-        pos = self.settings.get_page_number_pos(box.width)
+        box = self.shaper.shape_word(self._format_number(self.page.number))
+        pos = self.settings.get_page_number_pos(box.advance)
 
         self.cr.save()
         self.cr.translate(pos)
@@ -268,14 +342,14 @@ class Typesetter:
         # … and the leading to be tighter.
         leading = self.settings.body_font_size
 
-        w = max([box.width for box in boxes])
+        w = max([box.advance for box in boxes])
         x = self.settings.page_width - self.settings.right_margin / 2 - w / 2
         # Center the boxes vertically around the line.
         # XXX: should use the box height / 2
         y -= leading / 2
         for box in boxes:
             # Center the box horizontally relative to the others
-            offset = (w - box.width) * scale / 2
+            offset = (w - box.advance) * scale / 2
 
             self.cr.save()
             self.cr.translate((x + offset, y))
@@ -285,67 +359,17 @@ class Typesetter:
 
             y += leading
 
-    def _finish_page(self):
-         self._show_page_number()
-         self.cr.show_page()
-         self.state.page += 1
-         self.state.line = 0
-
-    def _show_opening(self):
-        if not self.opening:
-            return
-
-        # Finish the page of only one line is left.
-        if self.state.line == self.settings.lines_per_page - 1:
-            self._finish_page()
-
-        box = self.shaper.shape_word("\uFDFD")
-        pos = self.settings.get_line_start_pos(self.state.line, box.width)
-        pos.x -= box.width
-        self.cr.save()
-        self.cr.translate(pos)
-        self.cr.show_glyphs(box.glyphs)
-        self.cr.restore()
-
-        self.state.line += 1
-
-    def _create_lines(self):
-        lines = []
-        nodes = self.shaper.shape_paragraph(self.text)
-        breaks = nodes.compute_breakpoints(self.lengths, tolerance=2)
-
-        start = 0
-        for i, breakpoint in enumerate(breaks[1:]):
-            ratio = nodes.compute_adjustment_ratio(start, breakpoint, i, self.lengths)
-
-            boxes = []
-            for j in range(start, breakpoint):
-                box = nodes[j]
-                if box.is_glue():
-                    box.width = box.compute_width(ratio)
-                boxes.append(box)
-
-            while not boxes[-1].is_box():
-                boxes.pop()
-
-            width = sum([box.width for box in boxes])
-            lines.append(Line(width, boxes))
-
-            start = breakpoint + 1
-
-        return lines
-
     def _draw_output(self):
         self.cr.set_source_colour(qh.Colour.grey(0))
 
-        lines = self._create_lines()
+        lines = self.page.lines
         for i, line in enumerate(lines):
-            pos = self.settings.get_line_start_pos(self.state.line, line.width)
+            pos = self.settings.get_line_start_pos(i, line.width)
             for box in line.boxes:
                 # We start drawing from the right edge of the text block, and
                 # move to the left, thus the subtraction instead of addition
                 # below.
-                pos.x -= box.width
+                pos.x -= box.advance
                 if box.is_box():
                     self.cr.save()
                     self.cr.translate(pos)
@@ -355,10 +379,8 @@ class Typesetter:
                         self._show_quarter(pos.y)
                         self.state.quarter += 1
 
-            self.state.line += 1
-            # The page had enough lines, start new page.
-            if self.state.line == self.settings.lines_per_page:
-                self._finish_page()
+        self._show_page_number()
+        self.cr.show_page()
 
 def main(data, filename):
     document = Document(filename, data)
