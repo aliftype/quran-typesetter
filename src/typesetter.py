@@ -55,7 +55,7 @@ class Settings:
         self.page_height      = 540 # 7.5in
         # From top of page to first baseline.
         self.top_margin       = 105 # ~1.46
-        self.right_margin     = 100 # ~1.4in
+        self.outer_margin     = 100 # ~1.4in
         self.page_number_ypos = 460 # ~6.4in
 
     def get_text_width(self, line):
@@ -63,18 +63,31 @@ class Settings:
             line = -1
         return self.text_widths[line]
 
-    def get_page_number_pos(self, width):
-        pos = qh.Vector(0, 0)
+    def get_page_number_pos(self, page, width):
+        pos = qh.Vector(0, self.page_number_ypos)
 
         # Center the number relative to the text box.
-        text_width = self.get_text_width(self.lines_per_page - 1)
-        pos.x = self.page_width - (text_width / 2) - self.right_margin
-        pos.y = self.page_number_ypos
+        line = self.lines_per_page - 1
+        text_width = self.get_text_width(line)
+        pos.x = self.get_text_start_pos(page, line)
+        pos.x -= text_width / 2
 
         # Center the box around the position
         pos.x -= width / 2
 
         return pos
+
+    def get_text_start_pos(self, page, line):
+        if page.number % 2 == 0:
+            return self.page_width - self.outer_margin
+        else:
+            return self.outer_margin + self.get_text_width(line)
+
+    def get_side_mark_pos(self, page, line, width):
+        x = (self.outer_margin / 2) - (width / 2)
+        if page.number % 2 == 0:
+            x += self.get_text_start_pos(page, line)
+        return x
 
 class State:
     """Class holding document wide state."""
@@ -286,7 +299,7 @@ class Page:
         pos = qh.Vector(0, settings.top_margin)
         for i, line in enumerate(lines):
             if line.is_box():
-                pos.x = settings.page_width - settings.right_margin
+                pos.x = settings.get_text_start_pos(self, i)
                 # Center lines not equal to text width.
                 text_width = settings.get_text_width(i)
                 if not math.isclose(line.width, text_width):
@@ -303,7 +316,7 @@ class Page:
                         cr.show_glyphs(box.glyphs)
                         cr.restore()
                         if box.quarter:
-                            self._show_quarter(pos.y, state.quarter, shaper,
+                            self._show_quarter(i, pos.y, state.quarter, shaper,
                                                settings)
                             state.quarter += 1
 
@@ -311,7 +324,7 @@ class Page:
 
         # Show page number.
         box = shaper.shape_word(format_number(self.number))
-        pos = settings.get_page_number_pos(box.advance)
+        pos = settings.get_page_number_pos(self, box.advance)
         cr.save()
         cr.translate(pos)
         cr.show_glyphs(box.glyphs)
@@ -319,7 +332,7 @@ class Page:
 
         cr.show_page()
 
-    def _show_quarter(self, y, quarter, shaper, settings):
+    def _show_quarter(self, line, y, quarter, shaper, settings):
         """
         Draw the quarter, group and part text on the margin. A group is 4
         quarters, a part is 2 groups.
@@ -351,7 +364,7 @@ class Page:
         leading = settings.body_font_size
 
         w = max([box.advance for box in boxes])
-        x = settings.page_width - settings.right_margin / 2 - w / 2
+        x = settings.get_side_mark_pos(self, line, w)
         # Center the boxes vertically around the line.
         # XXX: should use the box height / 2
         y -= leading / 2
