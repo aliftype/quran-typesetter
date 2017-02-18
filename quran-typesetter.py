@@ -12,40 +12,6 @@ logger = logging.getLogger("typesetter")
 logger.setLevel(logging.INFO)
 
 
-class Box:
-    """Class representing a word."""
-
-    def __init__(self, advance, glyphs):
-        self.advance = advance
-        self.stretch = self.shrink = 0
-        self.penalty = 0
-        self.flagged = 0
-
-        self.glyphs = glyphs
-        self.quarter = False
-
-    def is_glue(self):         return 0
-    def is_box(self):          return 1
-    def is_penalty(self):      return 0
-    def is_forced_break(self): return 0
-
-class Line:
-    """Class representing a line of text."""
-
-    def __init__(self, advance, width, boxes):
-        self.advance = advance
-        self.width = width
-        self.stretch = self.shrink = 0
-        self.penalty = 0
-        self.flagged = 0
-
-        self.boxes = boxes
-
-    def is_glue(self):         return 0
-    def is_box(self):          return 1
-    def is_penalty(self):      return 0
-    def is_forced_break(self): return 0
-
 class Settings:
     """Class holding document wide settings."""
 
@@ -94,11 +60,13 @@ class Settings:
             x += self.get_text_start_pos(page, line)
         return x
 
+
 class State:
     """Class holding document wide state."""
 
     def __init__(self):
         self.quarter = 1
+
 
 class Document:
     """Class representing the main document and holding document-wide settings
@@ -202,6 +170,7 @@ class Document:
 
         return lines
 
+
 class Shaper:
     """Class for turning text into boxes and glue."""
 
@@ -285,11 +254,13 @@ class Shaper:
 
         return nodes
 
+
 def format_number(number):
     """Format number to Arabic-Indic digits."""
 
     number = int(number)
     return "".join([chr(ord(c) + 0x0630) for c in str(number)])
+
 
 class Page:
     """Class representing a page of text."""
@@ -398,6 +369,43 @@ class Page:
             self.cr.restore()
 
             y += leading
+
+
+class Box:
+    """Class representing a word."""
+
+    def __init__(self, advance, glyphs):
+        self.advance = advance
+        self.stretch = self.shrink = 0
+        self.penalty = 0
+        self.flagged = 0
+
+        self.glyphs = glyphs
+        self.quarter = False
+
+    def is_glue(self):         return 0
+    def is_box(self):          return 1
+    def is_penalty(self):      return 0
+    def is_forced_break(self): return 0
+
+
+class Line:
+    """Class representing a line of text."""
+
+    def __init__(self, advance, width, boxes):
+        self.advance = advance
+        self.width = width
+        self.stretch = self.shrink = 0
+        self.penalty = 0
+        self.flagged = 0
+
+        self.boxes = boxes
+
+    def is_glue(self):         return 0
+    def is_box(self):          return 1
+    def is_penalty(self):      return 0
+    def is_forced_break(self): return 0
+
 
 def main(data, filename):
     document = Document(filename, data)
