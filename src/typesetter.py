@@ -41,13 +41,6 @@ class Line:
     def is_penalty(self):      return 0
     def is_forced_break(self): return 0
 
-class Page:
-    """Class representing a page of text."""
-
-    def __init__(self, lines, number):
-        self.lines = lines
-        self.number = number
-
 class Settings:
     """Class holding document wide settings."""
 
@@ -120,7 +113,7 @@ class Document:
         pages = self._create_pages(lines)
 
         for page in pages:
-            self._output_page(page)
+            page.draw(self.surface, self.shaper, self.settings, self.state)
 
     def _create_lines(self):
         """Processes each chapter and creates lines for the whole document."""
@@ -185,14 +178,6 @@ class Document:
             start = breakpoint + 1
 
         return lines
-
-    def _output_page(self, page):
-        typesetter = Typesetter(page,
-                                self.surface,
-                                self.shaper,
-                                self.settings,
-                                self.state)
-        typesetter.output()
 
 class Shaper:
     """Class for turning text into boxes and glue."""
@@ -277,73 +262,89 @@ class Shaper:
 
         return nodes
 
-class Typesetter:
+def format_number(number):
+    """Format number to Arabic-Indic digits."""
 
-    def __init__(self, page, surface, shaper, settings, state):
-        self.page = page
-        self.shaper = shaper
-        self.settings = settings
-        self.state = state
-        self.lengths = self.settings.text_widths
+    number = int(number)
+    return "".join([chr(ord(c) + 0x0630) for c in str(number)])
 
+class Page:
+    """Class representing a page of text."""
+
+    def __init__(self, lines, number):
+        self.lines = lines
+        self.number = number
+
+    def draw(self, surface, shaper, settings, state):
         # Create a new FreeType face for Cairo, as sometimes Cairo mangles the
         # char size, breaking HarfBuzz positions when it uses the same face.
         ft_face = ft.find_face(settings.body_font)
         cr = self.cr = qh.Context.create(surface)
         cr.set_font_face(qh.FontFace.create_for_ft_face(ft_face))
         cr.set_font_size(settings.body_font_size)
+        cr.set_source_colour(qh.Colour.grey(0))
 
-    def output(self):
-        self._draw_output()
+        lines = self.lines
+        for i, line in enumerate(lines):
+            pos = settings.get_line_start_pos(i, line.width)
+            for box in line.boxes:
+                # We start drawing from the right edge of the text block, and
+                # move to the left, thus the subtraction instead of addition
+                # below.
+                pos.x -= box.advance
+                if box.is_box():
+                    cr.save()
+                    cr.translate(pos)
+                    cr.show_glyphs(box.glyphs)
+                    cr.restore()
+                    if box.quarter:
+                        self._show_quarter(pos.y, state.quarter, shaper,
+                                           settings)
+                        state.quarter += 1
 
-    def _format_number(self, number):
-        """Format number to Arabic-Indic digits."""
+        # Show page number.
+        box = shaper.shape_word(format_number(self.number))
+        pos = settings.get_page_number_pos(box.advance)
+        cr.save()
+        cr.translate(pos)
+        cr.show_glyphs(box.glyphs)
+        cr.restore()
 
-        number = int(number)
-        return "".join([chr(ord(c) + 0x0630) for c in str(number)])
+        cr.show_page()
 
-    def _show_page_number(self):
-        box = self.shaper.shape_word(self._format_number(self.page.number))
-        pos = self.settings.get_page_number_pos(box.advance)
-
-        self.cr.save()
-        self.cr.translate(pos)
-        self.cr.show_glyphs(box.glyphs)
-        self.cr.restore()
-
-    def _show_quarter(self, y):
+    def _show_quarter(self, y, quarter, shaper, settings):
         """
         Draw the quarter, group and part text on the margin. A group is 4
         quarters, a part is 2 groups.
         """
 
         boxes = []
-        num = self.state.quarter % 4
+        num = quarter % 4
         if num:
             # A quarter.
             words = ("ربع", "نصف", "ثلاثة أرباع")
-            boxes.append(self.shaper.shape_word(words[num - 1]))
-            boxes.append(self.shaper.shape_word("الحزب"))
+            boxes.append(shaper.shape_word(words[num - 1]))
+            boxes.append(shaper.shape_word("الحزب"))
         else:
             # A group…
-            group = self._format_number((self.state.quarter / 4) + 1)
-            if self.state.quarter % 8:
+            group = format_number((quarter / 4) + 1)
+            if quarter % 8:
                 # … without a part.
-                boxes.append(self.shaper.shape_word("حزب"))
-                boxes.append(self.shaper.shape_word(group))
+                boxes.append(shaper.shape_word("حزب"))
+                boxes.append(shaper.shape_word(group))
             else:
                 # … with a part.
-                part = self._format_number((self.state.quarter / 8) + 1)
-                boxes.append(self.shaper.shape_word("حزب %s" % group))
-                boxes.append(self.shaper.shape_word("جزء %s" % part))
+                part = format_number((quarter / 8) + 1)
+                boxes.append(shaper.shape_word("حزب %s" % group))
+                boxes.append(shaper.shape_word("جزء %s" % part))
 
         # We want the text to be smaller than the body size…
         scale = .8
         # … and the leading to be tighter.
-        leading = self.settings.body_font_size
+        leading = settings.body_font_size
 
         w = max([box.advance for box in boxes])
-        x = self.settings.page_width - self.settings.right_margin / 2 - w / 2
+        x = settings.page_width - settings.right_margin / 2 - w / 2
         # Center the boxes vertically around the line.
         # XXX: should use the box height / 2
         y -= leading / 2
@@ -358,29 +359,6 @@ class Typesetter:
             self.cr.restore()
 
             y += leading
-
-    def _draw_output(self):
-        self.cr.set_source_colour(qh.Colour.grey(0))
-
-        lines = self.page.lines
-        for i, line in enumerate(lines):
-            pos = self.settings.get_line_start_pos(i, line.width)
-            for box in line.boxes:
-                # We start drawing from the right edge of the text block, and
-                # move to the left, thus the subtraction instead of addition
-                # below.
-                pos.x -= box.advance
-                if box.is_box():
-                    self.cr.save()
-                    self.cr.translate(pos)
-                    self.cr.show_glyphs(box.glyphs)
-                    self.cr.restore()
-                    if box.quarter:
-                        self._show_quarter(pos.y)
-                        self.state.quarter += 1
-
-        self._show_page_number()
-        self.cr.show_page()
 
 def main(data, filename):
     document = Document(filename, data)
