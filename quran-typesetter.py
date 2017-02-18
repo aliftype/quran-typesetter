@@ -326,6 +326,23 @@ class Page:
         pos = settings.get_page_number_pos(self, box.advance)
         box.draw(cr, pos)
 
+        # Draw page decorations.
+        o = 8
+        x = settings.get_text_start_pos(self, 0) + o
+        y = settings.top_margin - settings.leading / 2 - o
+        w = settings.get_text_width(0) + o * 2
+        h = settings.leading * settings.lines_per_page + o
+
+        cr.save()
+        rect = qh.Rect(x - w, y, w, h)
+        cr.rectangle(rect)
+        cr.set_line_width(1)
+        cr.stroke()
+        cr.rectangle(rect.inset((-5, -5)))
+        cr.set_line_width(3)
+        cr.stroke()
+        cr.restore()
+
         cr.show_page()
 
     def _show_quarter(self, line, y, quarter, shaper, settings):
