@@ -72,7 +72,7 @@ class Document:
     """Class representing the main document and holding document-wide settings
        and state."""
 
-    def __init__(self, filename, chapters):
+    def __init__(self, chapters, filename):
         logger.debug("Initializing the document: %s", filename)
 
         self.settings = settings = Settings()
@@ -97,8 +97,8 @@ class Document:
         logger.info("Breaking text into lines…")
 
         lines = texwrap.ObjectList()
-        for num, chapter in enumerate(self.chapters):
-            lines.extend(self._process_chapter(chapter, num))
+        for chapter in self.chapters:
+            lines.extend(self._process_chapter(chapter))
         lines.add_closing_penalty()
 
         return lines
@@ -132,15 +132,15 @@ class Document:
 
         return pages
 
-    def _process_chapter(self, text, num, opening=True):
+    def _process_chapter(self, chapter):
         """Shapes the text and breaks it into lines."""
 
         lengths = self.settings.text_widths
-        nodes = self.shaper.shape_paragraph(text)
+        nodes = self.shaper.shape_paragraph(chapter.text)
         breaks = nodes.compute_breakpoints(lengths, tolerance=2)
 
         lines = []
-        if opening:
+        if chapter.opening:
             box = self.shaper.shape_word("\uFDFD")
             lines.append(Line(self.settings.leading, box.advance, [box]))
 
@@ -169,6 +169,17 @@ class Document:
         lines[-1].stretch = self.settings.leading
 
         return lines
+
+
+class Chapter:
+    """Class holding input text and metadata for a chapter."""
+
+    def __init__(self, text, name, place, opening, verses):
+        self.text = text
+        self.name = name
+        self.place = place
+        self.opening = opening
+        self.verses = verses
 
 
 class Shaper:
@@ -429,8 +440,8 @@ class Line:
             box.draw(cr, pos)
 
 
-def main(data, filename):
-    document = Document(filename, data)
+def main(chapters, filename):
+    document = Document(chapters, filename)
     document.save()
 
 if __name__ == "__main__":
@@ -458,14 +469,30 @@ if __name__ == "__main__":
     if args.quite:
         logger.setLevel(logging.ERROR)
 
-    data = []
+    path = os.path.join(args.datadir, "meta.txt")
+    if os.path.isfile(path):
+        with open(path, "r") as textfile:
+            metadata = {}
+            lines = [l.strip().split("\t") for l in textfile.readlines()]
+            for num, line in enumerate(lines):
+                num += 1
+                metadata[num] = [line[0], line[1], True]
+                if len(line) >= 3:
+                    metadata[num][2] = int(line[2])
+    else:
+        logger.error("File not found: %s", path)
+        sys.exit(1)
+
+    chapters = []
     for i in args.chapters:
         path = os.path.join(args.datadir, "%03d.txt" % i)
         if os.path.isfile(path):
             with open(path, "r") as textfile:
-                data.append(textfile.read())
+                lines = textfile.readlines()
+                chapter = Chapter("".join(lines), *metadata[i], len(lines))
+                chapters.append(chapter)
         else:
             logger.error("File not found: %s", path)
             sys.exit(1)
 
-    main(data, args.outfile)
+    main(chapters, args.outfile)
