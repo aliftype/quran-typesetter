@@ -491,10 +491,7 @@ class Heading:
         cr.save()
         cr.set_line_width(.5)
         cr.move_to((pos.x, pos.y - offset))
-        cr.rel_line_to((-width, 0))
-        cr.rel_line_to((0,  height))
-        cr.rel_line_to(( width, 0))
-        cr.rel_line_to((0, -height))
+        cr.rectangle(qh.Rect(pos.x - width, pos.y - offset, width, height))
         cr.stroke()
         cr.restore()
 
