@@ -394,10 +394,14 @@ if __name__ == "__main__":
             help="Directory containing input files to process")
     parser.add_argument("outfile", metavar="OUTFILE",
             help="Output file")
+    parser.add_argument("--chapters", "-c", metavar="N", nargs="*", type=int,
+            choices=range(1, 115), default=range(1, 115),
+            help="Which chapters to process (Default: all)")
 
     args = parser.parse_args()
+
     data = []
-    for i in range(1, 115):
+    for i in args.chapters:
         path = os.path.join(args.datadir, "%03d.txt" % i)
         if os.path.isfile(path):
             with open(path, "r") as textfile:
