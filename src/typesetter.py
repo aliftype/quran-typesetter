@@ -177,6 +177,9 @@ class Document:
 
             start = breakpoint + 1
 
+        # Allow stretching the glue between chapters.
+        lines[-1].stretch = self.settings.leading
+
         return lines
 
 class Shaper:
