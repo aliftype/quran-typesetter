@@ -76,19 +76,6 @@ class Settings:
 
         return pos
 
-    def get_line_start_pos(self, line, width=0):
-        pos = qh.Vector(0, 0)
-        pos.y = self.top_margin + (line * self.leading)
-        pos.x = self.page_width - self.right_margin
-
-        # Center lines not equal to text width.
-        text_width = self.get_text_width(line)
-        if not math.isclose(width, text_width):
-            pos.x -= (text_width - width) / 2
-
-        return pos
-
-
 class State:
     """Class holding document wide state."""
 
@@ -134,11 +121,19 @@ class Document:
 
         start = 0
         for i, breakpoint in enumerate(breaks[1:]):
+            ratio = lines.compute_adjustment_ratio(start, breakpoint, i,
+                                                   lengths)
+
             page = Page([], i + 1)
             for j in range(start, breakpoint):
                 line = lines[j]
-                if line.is_box():
-                    page.lines.append(line)
+                if line.is_glue():
+                    line.advance = line.compute_width(ratio)
+                page.lines.append(line)
+
+            while not page.lines[-1].is_box():
+                page.lines.pop()
+
             pages.append(page)
             start = breakpoint + 1
 
@@ -288,22 +283,31 @@ class Page:
         cr.set_source_colour(qh.Colour.grey(0))
 
         lines = self.lines
+        pos = qh.Vector(0, settings.top_margin)
         for i, line in enumerate(lines):
-            pos = settings.get_line_start_pos(i, line.width)
-            for box in line.boxes:
-                # We start drawing from the right edge of the text block, and
-                # move to the left, thus the subtraction instead of addition
-                # below.
-                pos.x -= box.advance
-                if box.is_box():
-                    cr.save()
-                    cr.translate(pos)
-                    cr.show_glyphs(box.glyphs)
-                    cr.restore()
-                    if box.quarter:
-                        self._show_quarter(pos.y, state.quarter, shaper,
-                                           settings)
-                        state.quarter += 1
+            if line.is_box():
+                pos.x = settings.page_width - settings.right_margin
+                # Center lines not equal to text width.
+                text_width = settings.get_text_width(i)
+                if not math.isclose(line.width, text_width):
+                    pos.x -= (text_width - line.width) / 2
+
+                for box in line.boxes:
+                    # We start drawing from the right edge of the text block,
+                    # and move to the left, thus the subtraction instead of
+                    # addition below.
+                    pos.x -= box.advance
+                    if box.is_box():
+                        cr.save()
+                        cr.translate(pos)
+                        cr.show_glyphs(box.glyphs)
+                        cr.restore()
+                        if box.quarter:
+                            self._show_quarter(pos.y, state.quarter, shaper,
+                                               settings)
+                            state.quarter += 1
+
+            pos.y += line.advance
 
         # Show page number.
         box = shaper.shape_word(format_number(self.number))
