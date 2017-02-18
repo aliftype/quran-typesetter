@@ -385,13 +385,21 @@ def main(data, filename):
     document.save()
 
 if __name__ == "__main__":
+    import os
     import sys
     if len(sys.argv) < 3:
         print("Usage: %s text_file [text_file2…] output.pdf" % sys.argv[0])
         sys.exit(1)
 
+    data_dir = sys.argv[1]
     data = []
-    for arg in sys.argv[1:-1]:
-        with open(arg, "r") as textfile:
-            data.append(textfile.read())
+    for i in range(1, 115):
+        path = os.path.join(data_dir, "%03d.txt" % i)
+        if os.path.isfile(path):
+            with open(path, "r") as textfile:
+                data.append(textfile.read())
+        else:
+            print("File not found: %s" % path)
+            sys.exit(1)
+
     main(data, sys.argv[-1])
