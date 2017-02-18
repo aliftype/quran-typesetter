@@ -145,7 +145,8 @@ class Document:
 
         lengths = self.settings.text_widths
         nodes = self.shaper.shape_paragraph(chapter.text)
-        breaks = nodes.compute_breakpoints(lengths, tolerance=2)
+        breaks = nodes.compute_breakpoints(lengths, tolerance=20)
+        assert breaks[-1] == len(nodes) - 1
 
         lines = [self._create_heading(chapter)]
         if chapter.opening:
