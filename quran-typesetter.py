@@ -132,6 +132,14 @@ class Document:
 
         return pages
 
+    def _create_heading(self, chapter):
+        lines = []
+        for text in chapter.get_heading_text():
+            boxes = self.shaper.shape_paragraph(text)
+            lines.append(Line(self.settings.leading, boxes))
+
+        return Heading(self.settings.leading * 2, self.settings.leading, lines)
+
     def _process_chapter(self, chapter):
         """Shapes the text and breaks it into lines."""
 
@@ -139,28 +147,24 @@ class Document:
         nodes = self.shaper.shape_paragraph(chapter.text)
         breaks = nodes.compute_breakpoints(lengths, tolerance=2)
 
-        lines = []
+        lines = [self._create_heading(chapter)]
         if chapter.opening:
             box = self.shaper.shape_word("\uFDFD")
-            lines.append(Line(self.settings.leading, box.advance, [box]))
+            lines.append(Line(self.settings.leading, [box]))
 
         start = 0
         for i, breakpoint in enumerate(breaks[1:]):
             ratio = nodes.compute_adjustment_ratio(start, breakpoint, i,
                                                    lengths)
 
-            line = Line(self.settings.leading, 0, [])
+            boxes = []
             for j in range(start, breakpoint):
                 box = nodes[j]
                 if box.is_glue():
                     box.advance = box.compute_width(ratio)
-                line.boxes.append(box)
+                boxes.append(box)
 
-            while not line.boxes[-1].is_box():
-                line.boxes.pop()
-
-            line.width = sum([box.advance for box in line.boxes])
-            lines.append(line)
+            lines.append(Line(self.settings.leading, boxes))
             lines.append(Glue(0, 0, 0))
 
             start = breakpoint + 1
@@ -174,12 +178,22 @@ class Document:
 class Chapter:
     """Class holding input text and metadata for a chapter."""
 
-    def __init__(self, text, name, place, opening, verses):
+    def __init__(self, text, number, name, place, opening, verses):
         self.text = text
+        self.number = number
         self.name = name
         self.place = place
         self.opening = opening
         self.verses = verses
+
+    def get_heading_text(self):
+        text = []
+        number = format_number(self.number)
+        verses = format_number(self.verses)
+        text.append("(%s) سورة %s %s" % (number, self.name, self.place))
+        text.append("و آياتها %s" % verses)
+
+        return text
 
 
 class Shaper:
@@ -209,7 +223,7 @@ class Shaper:
             self.buffer.clear_contents()
             self.buffer.add_str(word)
             # Everything is RTL except aya numbers and other digits-only words.
-            if word.startswith("\u06DD") or word.isdigit():
+            if word[0] in ("\u06DD", "(") or word.isdigit():
                 self.buffer.direction = hb.HARFBUZZ.DIRECTION_LTR
             else:
                 self.buffer.direction = hb.HARFBUZZ.DIRECTION_RTL
@@ -410,9 +424,8 @@ class Box:
 class Line:
     """Class representing a line of text."""
 
-    def __init__(self, advance, width, boxes):
+    def __init__(self, advance, boxes):
         self.advance = advance
-        self.width = width
         self.stretch = self.shrink = 0
         self.penalty = 0
         self.flagged = 0
@@ -428,9 +441,11 @@ class Line:
         return any([box.quarter for box in self.boxes if box.is_box()])
 
     def draw(self, cr, pos, text_width):
+        self.strip()
+        width = sum([box.advance for box in self.boxes])
         # Center lines not equal to text width.
-        if not math.isclose(self.width, text_width):
-            pos.x -= (text_width - self.width) / 2
+        if not math.isclose(width, text_width):
+            pos.x -= (text_width - width) / 2
 
         for box in self.boxes:
             # We start drawing from the right edge of the text block,
@@ -438,6 +453,50 @@ class Line:
             # addition below.
             pos.x -= box.advance
             box.draw(cr, pos)
+
+    def strip(self):
+        while not self.boxes[-1].is_box():
+            self.boxes.pop()
+
+
+class Heading:
+    """Class representing a chapter heading."""
+
+    def __init__(self, advance, leading, lines):
+        self.advance = advance
+        self.stretch = self.shrink = 0
+        self.penalty = 0
+        self.flagged = 0
+
+        self.leading = leading
+        self.lines = lines
+
+    def is_glue(self):         return 0
+    def is_box(self):          return 1
+    def is_penalty(self):      return 0
+    def is_forced_break(self): return 0
+
+    def has_quarter(self):     return 0
+
+    def draw(self, cr, pos, width):
+        offset = self.leading / 2
+        height = self.advance - offset
+
+        linepos = qh.Vector(pos.x, pos.y)
+        for line in self.lines:
+            line.draw(cr, linepos, width)
+            linepos.x = pos.x
+            linepos.y += line.advance - offset / 2
+
+        cr.save()
+        cr.set_line_width(.5)
+        cr.move_to((pos.x, pos.y - offset))
+        cr.rel_line_to((-width, 0))
+        cr.rel_line_to((0,  height))
+        cr.rel_line_to(( width, 0))
+        cr.rel_line_to((0, -height))
+        cr.stroke()
+        cr.restore()
 
 
 def main(chapters, filename):
@@ -489,7 +548,7 @@ if __name__ == "__main__":
         if os.path.isfile(path):
             with open(path, "r") as textfile:
                 lines = textfile.readlines()
-                chapter = Chapter("".join(lines), *metadata[i], len(lines))
+                chapter = Chapter("".join(lines), i, *metadata[i], len(lines))
                 chapters.append(chapter)
         else:
             logger.error("File not found: %s", path)
