@@ -261,8 +261,16 @@ class Shaper:
         # Split the text into words, treating space, newline and no-break space
         # as word separators.
         word = ""
-        for ch in text.strip():
+        for i, ch in enumerate(text.strip()):
             if ch in (" ", "\n", "\u00A0"):
+                # Drop quarter glyph at start of chapter but keep the mark.
+                if ch == "\u00A0" and i == 1 and text[0] == "\u06DE":
+                    box = Box(0, [])
+                    box.quarter = True
+                    nodes.append(box)
+                    word = ""
+                    continue
+
                 nodes.append(self.shape_word(word))
 
                 # Prohibit line breaking at no-break space.
