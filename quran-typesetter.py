@@ -301,6 +301,11 @@ class Page:
     def draw(self, surface, shaper, settings, state):
         logger.debug("Drawing page %d…", self.number)
 
+        if not self.lines:
+            logger.debug("Leaving empty page blank")
+            surface.show_page()
+            return
+
         # Create a new FreeType face for Cairo, as sometimes Cairo mangles the
         # char size, breaking HarfBuzz positions when it uses the same face.
         ft_face = ft.find_face(settings.body_font)
