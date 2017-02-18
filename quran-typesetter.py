@@ -161,7 +161,7 @@ class Document:
 
             line.width = sum([box.advance for box in line.boxes])
             lines.append(line)
-            lines.append(texwrap.Glue(0, 0, 0))
+            lines.append(Glue(0, 0, 0))
 
             start = breakpoint + 1
 
@@ -242,9 +242,9 @@ class Shaper:
 
                 # Prohibit line breaking at no-break space.
                 if ch == "\u00A0":
-                    nodes.append(texwrap.Penalty(0, texwrap.INFINITY))
+                    nodes.append(Penalty(0, texwrap.INFINITY))
 
-                nodes.append(texwrap.Glue(space, space / 2, space / 2))
+                nodes.append(Glue(space, space / 2, space / 2))
                 word = ""
             else:
                 word += ch
@@ -288,37 +288,18 @@ class Page:
         lines = self.lines
         pos = qh.Vector(0, settings.top_margin)
         for i, line in enumerate(lines):
-            if line.is_box():
-                pos.x = settings.get_text_start_pos(self, i)
-                # Center lines not equal to text width.
-                text_width = settings.get_text_width(i)
-                if not math.isclose(line.width, text_width):
-                    pos.x -= (text_width - line.width) / 2
-
-                for box in line.boxes:
-                    # We start drawing from the right edge of the text block,
-                    # and move to the left, thus the subtraction instead of
-                    # addition below.
-                    pos.x -= box.advance
-                    if box.is_box():
-                        cr.save()
-                        cr.translate(pos)
-                        cr.show_glyphs(box.glyphs)
-                        cr.restore()
-                        if box.quarter:
-                            self._show_quarter(i, pos.y, state.quarter, shaper,
-                                               settings)
-                            state.quarter += 1
-
+            pos.x = settings.get_text_start_pos(self, i)
+            text_width = settings.get_text_width(i)
+            line.draw(cr, pos, text_width)
+            if line.has_quarter():
+                self._show_quarter(i, pos.y, state.quarter, shaper, settings)
+                state.quarter += 1
             pos.y += line.advance
 
         # Show page number.
         box = shaper.shape_word(format_number(self.number))
         pos = settings.get_page_number_pos(self, box.advance)
-        cr.save()
-        cr.translate(pos)
-        cr.show_glyphs(box.glyphs)
-        cr.restore()
+        box.draw(cr, pos)
 
         cr.show_page()
 
@@ -371,6 +352,26 @@ class Page:
             y += leading
 
 
+class Glue(texwrap.Glue):
+    """Wraper around texwrap.Glue to hold our common API."""
+
+    def draw(self, cr, pos, text_width=0):
+        pass
+
+    def has_quarter(self):
+        return False
+
+
+class Penalty(texwrap.Penalty):
+    """Wraper around texwrap.Penalty to hold our common API."""
+
+    def draw(self, cr, pos, text_width=0):
+        pass
+
+    def has_quarter(self):
+        return False
+
+
 class Box:
     """Class representing a word."""
 
@@ -387,6 +388,12 @@ class Box:
     def is_box(self):          return 1
     def is_penalty(self):      return 0
     def is_forced_break(self): return 0
+
+    def draw(self, cr, pos, text_width=0):
+        cr.save()
+        cr.translate(pos)
+        cr.show_glyphs(self.glyphs)
+        cr.restore()
 
 
 class Line:
@@ -405,6 +412,21 @@ class Line:
     def is_box(self):          return 1
     def is_penalty(self):      return 0
     def is_forced_break(self): return 0
+
+    def has_quarter(self):
+        return any([box.quarter for box in self.boxes if box.is_box()])
+
+    def draw(self, cr, pos, text_width):
+        # Center lines not equal to text width.
+        if not math.isclose(self.width, text_width):
+            pos.x -= (text_width - self.width) / 2
+
+        for box in self.boxes:
+            # We start drawing from the right edge of the text block,
+            # and move to the left, thus the subtraction instead of
+            # addition below.
+            pos.x -= box.advance
+            box.draw(cr, pos)
 
 
 def main(data, filename):
