@@ -1,3 +1,4 @@
+import logging
 import math
 
 import harfbuzz as hb
@@ -5,6 +6,10 @@ import qahirah as qh
 import texlib.wrap as texwrap
 
 ft = qh.get_ft_lib()
+
+logging.basicConfig(format="%(asctime)s - %(message)s")
+logger = logging.getLogger("typesetter")
+logger.setLevel(logging.INFO)
 
 
 class Box:
@@ -100,6 +105,8 @@ class Document:
        and state."""
 
     def __init__(self, filename, chapters):
+        logger.debug("Initializing the document: %s", filename)
+
         self.settings = settings = Settings()
         self.state = State()
         self.surface = qh.PDFSurface.create(filename, (settings.page_width,
@@ -112,11 +119,14 @@ class Document:
         lines = self._create_lines()
         pages = self._create_pages(lines)
 
+        logger.info("Drawing pages…")
         for page in pages:
             page.draw(self.surface, self.shaper, self.settings, self.state)
 
     def _create_lines(self):
         """Processes each chapter and creates lines for the whole document."""
+
+        logger.info("Breaking text into lines…")
 
         lines = texwrap.ObjectList()
         for num, chapter in enumerate(self.chapters):
@@ -127,6 +137,8 @@ class Document:
 
     def _create_pages(self, lines):
         """Breaks the lines into pages"""
+
+        logger.info("Breaking lines into pages…")
 
         pages = [Page([], 1)]
         lengths = [self.settings.leading * self.settings.lines_per_page]
@@ -287,6 +299,8 @@ class Page:
         self.number = number
 
     def draw(self, surface, shaper, settings, state):
+        logger.debug("Drawing page %d…", self.number)
+
         # Create a new FreeType face for Cairo, as sometimes Cairo mangles the
         # char size, breaking HarfBuzz positions when it uses the same face.
         ft_face = ft.find_face(settings.body_font)
@@ -397,8 +411,17 @@ if __name__ == "__main__":
     parser.add_argument("--chapters", "-c", metavar="N", nargs="*", type=int,
             choices=range(1, 115), default=range(1, 115),
             help="Which chapters to process (Default: all)")
+    parser.add_argument("--quite", "-q", action="store_true",
+            help="Don’t print normal messages")
+    parser.add_argument("--verbose", "-v", action="store_true",
+            help="Print verbose messages")
 
     args = parser.parse_args()
+
+    if args.verbose:
+        logger.setLevel(logging.DEBUG)
+    if args.quite:
+        logger.setLevel(logging.ERROR)
 
     data = []
     for i in args.chapters:
@@ -407,7 +430,7 @@ if __name__ == "__main__":
             with open(path, "r") as textfile:
                 data.append(textfile.read())
         else:
-            print("File not found: %s" % path)
+            logger.error("File not found: %s", path)
             sys.exit(1)
 
     main(data, args.outfile)
