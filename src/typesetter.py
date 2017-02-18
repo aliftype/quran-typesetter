@@ -115,7 +115,7 @@ class Document:
     def _create_pages(self, lines):
         """Breaks the lines into pages"""
 
-        pages = []
+        pages = [Page([], 1)]
         lengths = [self.settings.leading * self.settings.lines_per_page]
         breaks = lines.compute_breakpoints(lengths, tolerance=2)
 
@@ -124,7 +124,7 @@ class Document:
             ratio = lines.compute_adjustment_ratio(start, breakpoint, i,
                                                    lengths)
 
-            page = Page([], i + 1)
+            page = Page([], len(pages) + 1)
             for j in range(start, breakpoint):
                 line = lines[j]
                 if line.is_glue():
