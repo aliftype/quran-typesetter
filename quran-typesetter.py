@@ -462,7 +462,7 @@ class NodeList(texwrap.ObjectList):
 
 
 class Glue(texwrap.Glue):
-    """Wraper around texwrap.Glue to hold our common API."""
+    """Wrapper around texwrap.Glue to hold our common API."""
 
     def draw(self, cr, pos, text_width=0):
         pass
@@ -472,7 +472,7 @@ class Glue(texwrap.Glue):
 
 
 class Penalty(texwrap.Penalty):
-    """Wraper around texwrap.Penalty to hold our common API."""
+    """Wrapper around texwrap.Penalty to hold our common API."""
 
     def draw(self, cr, pos, text_width=0):
         pass
