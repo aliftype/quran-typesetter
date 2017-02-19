@@ -77,9 +77,17 @@ class Document:
 
         self.settings = settings = Settings()
         self.state = State()
-        self.surface = qh.PDFSurface.create(filename, (settings.page_width,
-                                                       settings.page_height))
         self.shaper = Shaper(settings.body_font, settings.body_font_size)
+
+        surface = qh.PDFSurface.create(filename, (settings.page_width,
+                                                  settings.page_height))
+        # Create a new FreeType face for Cairo, as sometimes Cairo mangles the
+        # char size, breaking HarfBuzz positions when it uses the same face.
+        ft_face = ft.find_face(settings.body_font)
+        cr = self.cr = qh.Context.create(surface)
+        cr.set_font_face(qh.FontFace.create_for_ft_face(ft_face))
+        cr.set_font_size(settings.body_font_size)
+        cr.set_source_colour(qh.Colour.grey(0))
 
         self.chapters = chapters
 
@@ -89,7 +97,7 @@ class Document:
 
         logger.info("Drawing pages…")
         for page in pages:
-            page.draw(self.surface, self.shaper, self.settings, self.state)
+            page.draw(self.cr, self.shaper, self.settings, self.state)
 
     def _create_lines(self):
         """Processes each chapter and creates lines for the whole document."""
@@ -303,21 +311,15 @@ class Page:
         self.lines = lines
         self.number = number
 
-    def draw(self, surface, shaper, settings, state):
+    def draw(self, cr, shaper, settings, state):
         logger.debug("Drawing page %d…", self.number)
+
+        self.cr = cr
 
         if not self.lines:
             logger.debug("Leaving empty page blank")
-            surface.show_page()
+            cr.show_page()
             return
-
-        # Create a new FreeType face for Cairo, as sometimes Cairo mangles the
-        # char size, breaking HarfBuzz positions when it uses the same face.
-        ft_face = ft.find_face(settings.body_font)
-        cr = self.cr = qh.Context.create(surface)
-        cr.set_font_face(qh.FontFace.create_for_ft_face(ft_face))
-        cr.set_font_size(settings.body_font_size)
-        cr.set_source_colour(qh.Colour.grey(0))
 
         lines = self.lines
         pos = qh.Vector(0, settings.top_margin)
