@@ -570,7 +570,7 @@ class Heading:
         for line in self.lines:
             line.draw(cr, linepos, width)
             linepos.x = pos.x
-            linepos.y += line.advance - offset
+            linepos.y += line.advance - offset / 1.2
 
         cr.save()
         cr.set_line_width(.5)
