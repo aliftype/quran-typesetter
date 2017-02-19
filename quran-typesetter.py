@@ -18,7 +18,7 @@ class Settings:
     def __init__(self):
         # The defaults here roughly match “the 12-lines Mushaf”.
         self.body_font        = "Amiri Quran"
-        self.body_font_size   = 10
+        self.body_font_size   = 11.5
         self.lines_per_page   = 12
         self.leading          = 29  # ~0.4in
         self.text_widths      = [205] # ~2.84in
