@@ -449,6 +449,15 @@ class NodeList(texwrap.ObjectList):
 
         if breaks[-1] != len(self) - 1:
             breaks.append(len(self) - 1)
+
+        # Check that we are not overflowing the page, i.e. we don’t have more
+        # lines per page (plus intervening glue) than we should.
+        # XXX: 12 should be settings.lines_per_page
+        last = 0
+        for i in breaks[1:]:
+            assert i - last <= 12 * 2, (i, i - last)
+            last = i
+
         return breaks
 
 
