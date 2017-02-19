@@ -138,7 +138,7 @@ class Document:
             boxes = self.shaper.shape_paragraph(text)
             lines.append(Line(self.settings.leading, boxes))
 
-        return Heading(self.settings.leading * 2, self.settings.leading, lines)
+        return Heading(self.settings.leading, lines)
 
     def _process_chapter(self, chapter):
         """Shapes the text and breaks it into lines."""
@@ -447,6 +447,8 @@ class NodeList(texwrap.ObjectList):
                     last = i
             i += 1
 
+        if breaks[-1] != len(self) - 1:
+            breaks.append(len(self) - 1)
         return breaks
 
 
@@ -535,8 +537,8 @@ class Line:
 class Heading:
     """Class representing a chapter heading."""
 
-    def __init__(self, advance, leading, lines):
-        self.advance = advance
+    def __init__(self, leading, lines):
+        self.advance = leading * 1.8
         self.stretch = self.shrink = 0
         self.penalty = 0
         self.flagged = 0
@@ -559,7 +561,7 @@ class Heading:
         for line in self.lines:
             line.draw(cr, linepos, width)
             linepos.x = pos.x
-            linepos.y += line.advance - offset / 2
+            linepos.y += line.advance - offset
 
         cr.save()
         cr.set_line_width(.5)
