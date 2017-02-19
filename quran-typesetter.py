@@ -96,10 +96,9 @@ class Document:
 
         logger.info("Breaking text into lines…")
 
-        lines = texwrap.ObjectList()
+        lines = NodeList()
         for chapter in self.chapters:
             lines.extend(self._process_chapter(chapter))
-        lines.add_closing_penalty()
 
         return lines
 
@@ -110,7 +109,8 @@ class Document:
 
         pages = [Page([], 1)]
         lengths = [self.settings.leading * self.settings.lines_per_page]
-        breaks = lines.compute_breakpoints(lengths, tolerance=20)
+        breaks = lines.compute_breakpoints_first_fit(lengths)
+        assert breaks[-1] == len(lines) - 1
 
         start = 0
         for i, breakpoint in enumerate(breaks[1:]):
@@ -254,7 +254,7 @@ class Shaper:
         do anything special around spaces, which in turn allows us to cache
         the shaped words.
         """
-        nodes = texwrap.ObjectList()
+        nodes = NodeList()
 
         # Get the natural space advance
         space = self.shape_word(" ").advance
@@ -401,6 +401,53 @@ class Page:
             self.cr.restore()
 
             y += leading
+
+
+class NodeList(texwrap.ObjectList):
+
+    def compute_breakpoints_first_fit(self, line_lengths):
+        # Copied from compute_breakpoints() since compute_adjustment_ratio()
+        # needs them.
+        self.sum_width = {}
+        self.sum_shrink = {}
+        self.sum_stretch = {}
+        width_sum = shrink_sum = stretch_sum = 0
+        for i, node in enumerate(self):
+            self.sum_width[i] = width_sum
+            self.sum_shrink[i] = shrink_sum
+            self.sum_stretch[i] = stretch_sum
+
+            width_sum += node.advance
+            shrink_sum += node.shrink
+            stretch_sum += node.stretch
+
+        # Calculate line breaks.
+        # XXX: This seems rather hackish, clean it up!
+        breaks = [0]
+        advance = 0
+        last = 0
+        i = 0
+        while i < len(self):
+            line = len(breaks)
+            length = line_lengths[line if line < len(line_lengths) else -1]
+
+            node = self[i]
+            if node.is_box() or node.is_glue():
+                advance += node.advance
+
+            if not node.is_box():
+                if advance > length:
+                    breaks.append(last)
+                    advance = 0
+                    i = last
+                elif advance == length:
+                    breaks.append(i)
+                    advance = 0
+                else:
+                    last = i
+            i += 1
+
+        return breaks
 
 
 class Glue(texwrap.Glue):
