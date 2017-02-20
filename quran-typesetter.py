@@ -129,7 +129,7 @@ class Document:
             for j in range(start, breakpoint):
                 line = lines[j]
                 if line.is_glue():
-                    line.advance = line.compute_width(ratio)
+                    line.height = line.compute_width(ratio)
                 page.lines.append(line)
 
             while not page.lines[-1].is_box():
@@ -170,7 +170,7 @@ class Document:
             for j in range(start, breakpoint):
                 box = nodes[j]
                 if box.is_glue():
-                    box.advance = box.compute_width(ratio)
+                    box.width = box.compute_width(ratio)
                 boxes.append(box)
 
             lines.append(Line(self.settings.leading, boxes))
@@ -264,8 +264,8 @@ class Shaper:
         """
         nodes = NodeList()
 
-        # Get the natural space advance
-        space = self.shape_word(" ").advance
+        # Get the natural space width
+        space = self.shape_word(" ").width
 
         # Split the text into words, treating space, newline and no-break space
         # as word separators.
@@ -330,11 +330,11 @@ class Page:
             if line.has_quarter():
                 self._show_quarter(i, pos.y, state.quarter, shaper, settings)
                 state.quarter += 1
-            pos.y += line.advance
+            pos.y += line.height
 
         # Show page number.
         box = shaper.shape_word(format_number(self.number))
-        pos = settings.get_page_number_pos(self, box.advance)
+        pos = settings.get_page_number_pos(self, box.width)
         box.draw(cr, pos)
 
         # Draw page decorations.
@@ -387,14 +387,14 @@ class Page:
         # … and the leading to be tighter.
         leading = settings.body_font_size
 
-        w = max([box.advance for box in boxes])
+        w = max([box.width for box in boxes])
         x = settings.get_side_mark_pos(self, line, w)
         # Center the boxes vertically around the line.
         # XXX: should use the box height / 2
         y -= leading / 2
         for box in boxes:
             # Center the box horizontally relative to the others
-            offset = (w - box.advance) * scale / 2
+            offset = (w - box.width) * scale / 2
 
             self.cr.save()
             self.cr.translate((x + offset, y))
@@ -419,14 +419,14 @@ class NodeList(texwrap.ObjectList):
             self.sum_shrink[i] = shrink_sum
             self.sum_stretch[i] = stretch_sum
 
-            width_sum += node.advance
+            width_sum += getattr(node, "height", getattr(node, "width", 0))
             shrink_sum += node.shrink
             stretch_sum += node.stretch
 
         # Calculate line breaks.
         # XXX: This seems rather hackish, clean it up!
         breaks = [0]
-        advance = 0
+        height = 0
         last = 0
         i = 0
         while i < len(self):
@@ -434,17 +434,19 @@ class NodeList(texwrap.ObjectList):
             length = line_lengths[line if line < len(line_lengths) else -1]
 
             node = self[i]
-            if node.is_box() or node.is_glue():
-                advance += node.advance
+            if node.is_box():
+                height += node.height
+            if node.is_glue():
+                height += node.width
 
             if not node.is_box():
-                if advance > length:
+                if height > length:
                     breaks.append(last)
-                    advance = 0
+                    height = 0
                     i = last
-                elif advance == length:
+                elif height == length:
                     breaks.append(i)
-                    advance = 0
+                    height = 0
                 else:
                     last = i
             i += 1
@@ -486,8 +488,8 @@ class Penalty(texwrap.Penalty):
 class Box:
     """Class representing a word."""
 
-    def __init__(self, advance, glyphs):
-        self.advance = advance
+    def __init__(self, width, glyphs):
+        self.width = width
         self.stretch = self.shrink = 0
         self.penalty = 0
         self.flagged = 0
@@ -510,8 +512,8 @@ class Box:
 class Line:
     """Class representing a line of text."""
 
-    def __init__(self, advance, boxes):
-        self.advance = advance
+    def __init__(self, height, boxes):
+        self.height = height
         self.stretch = self.shrink = 0
         self.penalty = 0
         self.flagged = 0
@@ -528,7 +530,7 @@ class Line:
 
     def draw(self, cr, pos, text_width):
         self.strip()
-        width = sum([box.advance for box in self.boxes])
+        width = sum([box.width for box in self.boxes])
         # Center lines not equal to text width.
         if not math.isclose(width, text_width):
             pos.x -= (text_width - width) / 2
@@ -537,7 +539,7 @@ class Line:
             # We start drawing from the right edge of the text block,
             # and move to the left, thus the subtraction instead of
             # addition below.
-            pos.x -= box.advance
+            pos.x -= box.width
             box.draw(cr, pos)
 
     def strip(self):
@@ -549,7 +551,7 @@ class Heading:
     """Class representing a chapter heading."""
 
     def __init__(self, leading, lines):
-        self.advance = leading * 1.8
+        self.height = leading * 1.8
         self.stretch = self.shrink = 0
         self.penalty = 0
         self.flagged = 0
@@ -566,13 +568,13 @@ class Heading:
 
     def draw(self, cr, pos, width):
         offset = self.leading / 2
-        height = self.advance - offset
+        height = self.height - offset
 
         linepos = qh.Vector(pos.x, pos.y)
         for line in self.lines:
             line.draw(cr, linepos, width)
             linepos.x = pos.x
-            linepos.y += line.advance - offset / 1.2
+            linepos.y += line.height - offset / 1.2
 
         cr.save()
         cr.set_line_width(.5)
