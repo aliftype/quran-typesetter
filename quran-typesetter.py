@@ -104,7 +104,7 @@ class Document:
 
         logger.info("Breaking text into lines…")
 
-        lines = NodeList()
+        lines = LineList()
         for chapter in self.chapters:
             lines.extend(self._process_chapter(chapter))
 
@@ -117,7 +117,7 @@ class Document:
 
         pages = [Page([], 1)]
         lengths = [self.settings.leading * self.settings.lines_per_page]
-        breaks = lines.compute_breakpoints_first_fit(lengths)
+        breaks = lines.compute_breakpoints(lengths)
         assert breaks[-1] == len(lines) - 1
 
         start = 0
@@ -174,7 +174,7 @@ class Document:
                 boxes.append(box)
 
             lines.append(Line(self.settings.leading, boxes))
-            lines.append(Glue(0, 0, 0))
+            lines.append(LineGlue())
 
             start = breakpoint + 1
 
@@ -262,7 +262,7 @@ class Shaper:
         do anything special around spaces, which in turn allows us to cache
         the shaped words.
         """
-        nodes = NodeList()
+        nodes = texwrap.ObjectList()
 
         # Get the natural space width
         space = self.shape_word(" ").width
@@ -405,9 +405,9 @@ class Page:
             y += leading
 
 
-class NodeList(texwrap.ObjectList):
+class LineList(texwrap.ObjectList):
 
-    def compute_breakpoints_first_fit(self, line_lengths):
+    def compute_breakpoints(self, line_lengths):
         # Copied from compute_breakpoints() since compute_adjustment_ratio()
         # needs them.
         self.sum_width = {}
@@ -419,7 +419,7 @@ class NodeList(texwrap.ObjectList):
             self.sum_shrink[i] = shrink_sum
             self.sum_stretch[i] = stretch_sum
 
-            width_sum += getattr(node, "height", getattr(node, "width", 0))
+            width_sum += node.height
             shrink_sum += node.shrink
             stretch_sum += node.stretch
 
@@ -434,10 +434,8 @@ class NodeList(texwrap.ObjectList):
             length = line_lengths[line if line < len(line_lengths) else -1]
 
             node = self[i]
-            if node.is_box():
+            if node.is_box() or node.is_glue():
                 height += node.height
-            if node.is_glue():
-                height += node.width
 
             if not node.is_box():
                 if height > length:
@@ -507,6 +505,12 @@ class Box:
         cr.translate(pos)
         cr.show_glyphs(self.glyphs)
         cr.restore()
+
+
+class LineGlue(Glue):
+    def __init__(self, height=0, stretch=0, shrink=0):
+        super().__init__(height, stretch, shrink)
+        self.height = height
 
 
 class Line:
