@@ -104,7 +104,7 @@ class Document:
 
         logger.info("Breaking text into lines…")
 
-        lines = LineList()
+        lines = LineList(self)
         for chapter in self.chapters:
             lines.extend(self._process_chapter(chapter))
 
@@ -410,6 +410,10 @@ class Page:
 
 class LineList(texwrap.ObjectList):
 
+    def __init__(self, doc):
+        super().__init__()
+        self.doc = doc
+
     def compute_breakpoints(self, line_lengths):
         # Copied from compute_breakpoints() since compute_adjustment_ratio()
         # needs them.
@@ -457,10 +461,9 @@ class LineList(texwrap.ObjectList):
 
         # Check that we are not overflowing the page, i.e. we don’t have more
         # lines per page (plus intervening glue) than we should.
-        # XXX: 12 should be settings.lines_per_page
         last = 0
         for i in breaks[1:]:
-            assert i - last <= 12 * 2, (i, i - last)
+            assert i - last <= self.doc.settings.lines_per_page * 2, (i, i - last)
             last = i
 
         return breaks
