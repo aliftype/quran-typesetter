@@ -243,17 +243,17 @@ class Shaper:
 
             hb.shape(self.font, self.buffer)
 
-            glyphs, pos = self.buffer.get_glyphs()
-            box = Box(pos.x, glyphs)
+            self.word_cache[word] = self.buffer.get_glyphs()
 
-            # Flag boxes with “quarter” symbol, as it needs some special
-            # handling later.
-            if word.startswith("\u06DE"):
-                box.quarter = True
+        glyphs, pos = self.word_cache[word]
+        box = Box(self.doc, pos.x, glyphs)
 
-            self.word_cache[word] = box
+        # Flag boxes with “quarter” symbol, as it needs some special
+        # handling later.
+        if word.startswith("\u06DE"):
+            box.quarter = True
 
-        return self.word_cache[word]
+        return box
 
     def shape_paragraph(self, text):
         """
@@ -276,7 +276,7 @@ class Shaper:
             if ch in (" ", "\n", "\u00A0"):
                 # Drop quarter glyph at start of chapter but keep the mark.
                 if ch == "\u00A0" and i == 1 and text[0] == "\u06DE":
-                    box = Box(0, [])
+                    box = Box(self.doc, 0, [])
                     box.quarter = True
                     nodes.append(box)
                     word = ""
@@ -286,9 +286,9 @@ class Shaper:
 
                 # Prohibit line breaking at no-break space.
                 if ch == "\u00A0":
-                    nodes.append(Penalty(0, texwrap.INFINITY))
+                    nodes.append(Penalty(self.doc, 0, texwrap.INFINITY))
 
-                nodes.append(Glue(space, space / 2, space / 2))
+                nodes.append(Glue(self.doc, space, space / 2, space / 2))
                 word = ""
             else:
                 word += ch
@@ -478,6 +478,10 @@ class LineList(texwrap.ObjectList):
 class Glue(texwrap.Glue):
     """Wrapper around texwrap.Glue to hold our common API."""
 
+    def __init__(self, doc, width, stretch, shrink):
+        super().__init__(width, stretch, shrink)
+        self.doc = doc
+
     def draw(self, cr, pos, text_width=0):
         pass
 
@@ -487,6 +491,10 @@ class Glue(texwrap.Glue):
 
 class Penalty(texwrap.Penalty):
     """Wrapper around texwrap.Penalty to hold our common API."""
+
+    def __init__(self, doc, width, penalty, flagged=0):
+        super().__init__(width, penalty, flagged)
+        self.doc = doc
 
     def draw(self, cr, pos, text_width=0):
         pass
@@ -498,8 +506,9 @@ class Penalty(texwrap.Penalty):
 class Box(texwrap.Box):
     """Class representing a word."""
 
-    def __init__(self, width, glyphs):
+    def __init__(self, doc, width, glyphs):
         super().__init__(width)
+        self.doc = doc
         self.glyphs = glyphs
         self.quarter = False
 
@@ -515,8 +524,8 @@ class Box(texwrap.Box):
 
 class LineGlue(Glue):
     def __init__(self, doc, height=0, stretch=0, shrink=0):
-        super().__init__(height, stretch, shrink)
-        self.height = height
+        super().__init__(doc, height, stretch, shrink)
+        self.height = self.width
 
 
 class Line(texwrap.Box):
