@@ -33,6 +33,8 @@ class Document:
         self.outer_margin     = 100 # ~1.4in
         self.page_number_ypos = 460 # ~6.4in
 
+        # Cache for shaped words.
+        self.word_cache = {}
         self.shaper = Shaper(self)
 
         surface = qh.PDFSurface.create(filename, (self.page_width,
@@ -198,9 +200,6 @@ class Chapter:
 class Shaper:
     """Class for turning text into boxes and glue."""
 
-    # Cache for shaped words.
-    word_cache = {}
-
     def __init__(self, doc):
         self.doc = doc
         ft_face = ft.find_face(doc.body_font)
@@ -219,7 +218,7 @@ class Shaper:
 
         assert word
 
-        if word not in self.word_cache:
+        if word not in self.doc.word_cache:
             self.buffer.clear_contents()
             self.buffer.add_str(word)
             # Everything is RTL except aya numbers and other digits-only words.
@@ -232,9 +231,9 @@ class Shaper:
 
             hb.shape(self.font, self.buffer)
 
-            self.word_cache[word] = self.buffer.get_glyphs()
+            self.doc.word_cache[word] = self.buffer.get_glyphs()
 
-        glyphs, pos = self.word_cache[word]
+        glyphs, pos = self.doc.word_cache[word]
         box = Box(self.doc, pos.x, glyphs)
 
         # Flag boxes with “quarter” symbol, as it needs some special
