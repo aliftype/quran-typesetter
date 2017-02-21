@@ -12,10 +12,14 @@ logger = logging.getLogger("typesetter")
 logger.setLevel(logging.INFO)
 
 
-class Settings:
-    """Class holding document wide settings."""
+class Document:
+    """Class representing the main document and holding document-wide settings
+       and state."""
 
-    def __init__(self):
+    def __init__(self, chapters, filename):
+        logger.debug("Initializing the document: %s", filename)
+
+        # Settungs
         # The defaults here roughly match “the 12-lines Mushaf”.
         self.body_font        = "Amiri Quran"
         self.body_font_size   = 11.5
@@ -28,6 +32,23 @@ class Settings:
         self.top_margin       = 105 # ~1.46
         self.outer_margin     = 100 # ~1.4in
         self.page_number_ypos = 460 # ~6.4in
+
+        self.shaper = Shaper(self)
+
+        surface = qh.PDFSurface.create(filename, (self.page_width,
+                                                  self.page_height))
+        # Create a new FreeType face for Cairo, as sometimes Cairo mangles the
+        # char size, breaking HarfBuzz positions when it uses the same face.
+        ft_face = ft.find_face(self.body_font)
+        cr = self.cr = qh.Context.create(surface)
+        cr.set_font_face(qh.FontFace.create_for_ft_face(ft_face))
+        cr.set_font_size(self.body_font_size)
+        cr.set_source_colour(qh.Colour.grey(0))
+
+        self.chapters = chapters
+
+        # State.
+        self.current_quarter = 1
 
     def get_text_width(self, line):
         if line >= len(self.text_widths):
@@ -60,32 +81,6 @@ class Settings:
             x += self.get_text_start_pos(page, line)
         return x
 
-
-class Document:
-    """Class representing the main document and holding document-wide settings
-       and state."""
-
-    def __init__(self, chapters, filename):
-        logger.debug("Initializing the document: %s", filename)
-
-        self.settings = settings = Settings()
-        self.shaper = Shaper(self)
-
-        surface = qh.PDFSurface.create(filename, (settings.page_width,
-                                                  settings.page_height))
-        # Create a new FreeType face for Cairo, as sometimes Cairo mangles the
-        # char size, breaking HarfBuzz positions when it uses the same face.
-        ft_face = ft.find_face(settings.body_font)
-        cr = self.cr = qh.Context.create(surface)
-        cr.set_font_face(qh.FontFace.create_for_ft_face(ft_face))
-        cr.set_font_size(settings.body_font_size)
-        cr.set_source_colour(qh.Colour.grey(0))
-
-        self.chapters = chapters
-
-        # State.
-        self.current_quarter = 1
-
     def save(self):
         lines = self._create_lines()
         pages = self._create_pages(lines)
@@ -111,7 +106,7 @@ class Document:
         logger.info("Breaking lines into pages…")
 
         pages = [Page(self, [], 1)]
-        lengths = [self.settings.leading * self.settings.lines_per_page]
+        lengths = [self.leading * self.lines_per_page]
         breaks = lines.compute_breakpoints(lengths)
         assert breaks[-1] == len(lines) - 1
 
@@ -146,7 +141,7 @@ class Document:
     def _process_chapter(self, chapter):
         """Shapes the text and breaks it into lines."""
 
-        lengths = self.settings.text_widths
+        lengths = self.text_widths
         nodes = self.shaper.shape_paragraph(chapter.text)
         breaks = nodes.compute_breakpoints(lengths, tolerance=20)
         assert breaks[-1] == len(nodes) - 1
@@ -174,7 +169,7 @@ class Document:
             start = breakpoint + 1
 
         # Allow stretching the glue between chapters.
-        lines[-1].stretch = self.settings.leading
+        lines[-1].stretch = self.leading
 
         return lines
 
@@ -208,9 +203,8 @@ class Shaper:
 
     def __init__(self, doc):
         self.doc = doc
-        ft_face = ft.find_face(doc.settings.body_font)
-        ft_face.set_char_size(size=doc.settings.body_font_size,
-                              resolution=qh.base_dpi)
+        ft_face = ft.find_face(doc.body_font)
+        ft_face.set_char_size(size=doc.body_font_size, resolution=qh.base_dpi)
         self.font = hb.Font.ft_create(ft_face)
         self.buffer = hb.Buffer.create()
 
@@ -313,7 +307,6 @@ class Page:
         logger.debug("Drawing page %d…", self.number)
 
         shaper = self.doc.shaper
-        settings = self.doc.settings
         self.cr = cr
 
         if not self.lines:
@@ -322,10 +315,10 @@ class Page:
             return
 
         lines = self.lines
-        pos = qh.Vector(0, settings.top_margin)
+        pos = qh.Vector(0, self.doc.top_margin)
         for i, line in enumerate(lines):
-            pos.x = settings.get_text_start_pos(self, i)
-            text_width = settings.get_text_width(i)
+            pos.x = self.doc.get_text_start_pos(self, i)
+            text_width = self.doc.get_text_width(i)
             line.draw(cr, pos, text_width)
             if line.has_quarter():
                 self._show_quarter(i, pos.y)
@@ -334,15 +327,15 @@ class Page:
 
         # Show page number.
         box = shaper.shape_word(format_number(self.number))
-        pos = settings.get_page_number_pos(self, box.width)
+        pos = self.doc.get_page_number_pos(self, box.width)
         box.draw(cr, pos)
 
         # Draw page decorations.
         o = 8
-        x = settings.get_text_start_pos(self, 0) + o
-        y = settings.top_margin - settings.leading / 2 - o
-        w = settings.get_text_width(0) + o * 2
-        h = settings.leading * settings.lines_per_page + o
+        x = self.doc.get_text_start_pos(self, 0) + o
+        y = self.doc.top_margin - self.doc.leading / 2 - o
+        w = self.doc.get_text_width(0) + o * 2
+        h = self.doc.leading * self.doc.lines_per_page + o
 
         cr.save()
         rect = qh.Rect(x - w, y, w, h)
@@ -389,10 +382,10 @@ class Page:
         # We want the text to be smaller than the body size…
         scale = .8
         # … and the leading to be tighter.
-        leading = self.doc.settings.body_font_size
+        leading = self.doc.body_font_size
 
         w = max([box.width for box in boxes])
-        x = self.doc.settings.get_side_mark_pos(self, line, w)
+        x = self.doc.get_side_mark_pos(self, line, w)
         # Center the boxes vertically around the line.
         # XXX: should use the box height / 2
         y -= leading / 2
@@ -464,7 +457,7 @@ class LineList(texwrap.ObjectList):
         # lines per page (plus intervening glue) than we should.
         last = 0
         for i in breaks[1:]:
-            assert i - last <= self.doc.settings.lines_per_page * 2, (i, i - last)
+            assert i - last <= self.doc.lines_per_page * 2, (i, i - last)
             last = i
 
         return breaks
@@ -527,7 +520,7 @@ class Line(texwrap.Box):
     """Class representing a line of text."""
 
     def __init__(self, doc, boxes):
-        super().__init__(doc.settings.leading)
+        super().__init__(doc.leading)
         self.doc = doc
         self.height = self.width
         self.boxes = boxes
@@ -559,10 +552,10 @@ class Heading(Line):
 
     def __init__(self, doc, lines):
         super().__init__(doc, lines)
-        self.height = doc.settings.leading * 1.8
+        self.height = doc.leading * 1.8
 
     def draw(self, cr, pos, width):
-        offset = self.doc.settings.leading / 2
+        offset = self.doc.leading / 2
         height = self.height - offset
 
         linepos = qh.Vector(pos.x, pos.y)
