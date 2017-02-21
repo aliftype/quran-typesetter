@@ -379,8 +379,9 @@ class Page:
             else:
                 # … with a part.
                 part = format_number((quarter / 8) + 1)
-                boxes.append(shaper.shape_word("حزب %s" % group))
-                boxes.append(shaper.shape_word("جزء %s" % part))
+                # XXX: [::-1] is a hack to get the numbers LTR
+                boxes.append(shaper.shape_word("حزب %s" % group[::-1]))
+                boxes.append(shaper.shape_word("جزء %s" % part[::-1]))
 
         # We want the text to be smaller than the body size…
         scale = .8
