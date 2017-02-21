@@ -16,7 +16,7 @@ class Document:
     """Class representing the main document and holding document-wide settings
        and state."""
 
-    def __init__(self, chapters, filename):
+    def __init__(self, chapters, filename, decorations=True):
         logger.debug("Initializing the document: %s", filename)
 
         # Settungs
@@ -32,6 +32,8 @@ class Document:
         self.top_margin       = 105 # ~1.46
         self.outer_margin     = 100 # ~1.4in
         self.page_number_ypos = 460 # ~6.4in
+
+        self.page_decorations = decorations
 
         # Cache for shaped words.
         self.word_cache = {}
@@ -330,21 +332,22 @@ class Page:
         box.draw(cr, pos)
 
         # Draw page decorations.
-        o = 8
-        x = self.doc.get_text_start_pos(self, 0) + o
-        y = self.doc.top_margin - self.doc.leading / 2 - o
-        w = self.doc.get_text_width(0) + o * 2
-        h = self.doc.leading * self.doc.lines_per_page + o
+        if self.doc.page_decorations:
+            o = 8
+            x = self.doc.get_text_start_pos(self, 0) + o
+            y = self.doc.top_margin - self.doc.leading / 2 - o
+            w = self.doc.get_text_width(0) + o * 2
+            h = self.doc.leading * self.doc.lines_per_page + o
 
-        cr.save()
-        rect = qh.Rect(x - w, y, w, h)
-        cr.rectangle(rect)
-        cr.set_line_width(1)
-        cr.stroke()
-        cr.rectangle(rect.inset((-5, -5)))
-        cr.set_line_width(3)
-        cr.stroke()
-        cr.restore()
+            cr.save()
+            rect = qh.Rect(x - w, y, w, h)
+            cr.rectangle(rect)
+            cr.set_line_width(1)
+            cr.stroke()
+            cr.rectangle(rect.inset((-5, -5)))
+            cr.set_line_width(3)
+            cr.stroke()
+            cr.restore()
 
         cr.show_page()
 
@@ -571,8 +574,8 @@ class Heading(Line):
         cr.restore()
 
 
-def main(chapters, filename):
-    document = Document(chapters, filename)
+def main(chapters, filename, decorations):
+    document = Document(chapters, filename, decorations)
     document.save()
 
 if __name__ == "__main__":
@@ -588,6 +591,9 @@ if __name__ == "__main__":
     parser.add_argument("--chapters", "-c", metavar="N", nargs="*", type=int,
             choices=range(1, 115), default=range(1, 115),
             help="Which chapters to process (Default: all)")
+    parser.add_argument("--no-decorations", "-d", action="store_false",
+            dest="decorations",
+            help="Don’t draw page decorations")
     parser.add_argument("--quite", "-q", action="store_true",
             help="Don’t print normal messages")
     parser.add_argument("--verbose", "-v", action="store_true",
@@ -626,4 +632,4 @@ if __name__ == "__main__":
             logger.error("File not found: %s", path)
             sys.exit(1)
 
-    main(chapters, args.outfile)
+    main(chapters, args.outfile, args.decorations)
