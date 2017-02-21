@@ -495,10 +495,10 @@ class Box:
         self.glyphs = glyphs
         self.quarter = False
 
-    def is_glue(self):         return 0
-    def is_box(self):          return 1
-    def is_penalty(self):      return 0
-    def is_forced_break(self): return 0
+    def is_glue(self):         return False
+    def is_box(self):          return True
+    def is_penalty(self):      return False
+    def is_forced_break(self): return False
 
     def draw(self, cr, pos, text_width=0):
         cr.save()
@@ -524,10 +524,10 @@ class Line:
 
         self.boxes = boxes
 
-    def is_glue(self):         return 0
-    def is_box(self):          return 1
-    def is_penalty(self):      return 0
-    def is_forced_break(self): return 0
+    def is_glue(self):         return False
+    def is_box(self):          return True
+    def is_penalty(self):      return False
+    def is_forced_break(self): return False
 
     def has_quarter(self):
         return any([box.quarter for box in self.boxes if box.is_box()])
@@ -563,12 +563,12 @@ class Heading:
         self.leading = leading
         self.lines = lines
 
-    def is_glue(self):         return 0
-    def is_box(self):          return 1
-    def is_penalty(self):      return 0
-    def is_forced_break(self): return 0
+    def is_glue(self):         return False
+    def is_box(self):          return True
+    def is_penalty(self):      return False
+    def is_forced_break(self): return False
 
-    def has_quarter(self):     return 0
+    def has_quarter(self):     return False
 
     def draw(self, cr, pos, width):
         offset = self.leading / 2
