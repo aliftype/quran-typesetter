@@ -144,9 +144,9 @@ class Document:
         lines = []
         for text in chapter.get_heading_text():
             boxes = self.shaper.shape_paragraph(text)
-            lines.append(Line(self.settings.leading, boxes))
+            lines.append(Line(self, boxes))
 
-        return Heading(self.settings.leading, lines)
+        return Heading(self, lines)
 
     def _process_chapter(self, chapter):
         """Shapes the text and breaks it into lines."""
@@ -159,7 +159,7 @@ class Document:
         lines = [self._create_heading(chapter)]
         if chapter.opening:
             box = self.shaper.shape_word("\uFDFD")
-            lines.append(Line(self.settings.leading, [box]))
+            lines.append(Line(self, [box]))
 
         start = 0
         for i, breakpoint in enumerate(breaks[1:]):
@@ -173,8 +173,8 @@ class Document:
                     box.width = box.compute_width(ratio)
                 boxes.append(box)
 
-            lines.append(Line(self.settings.leading, boxes))
-            lines.append(LineGlue())
+            lines.append(Line(self, boxes))
+            lines.append(LineGlue(self))
 
             start = breakpoint + 1
 
@@ -514,7 +514,7 @@ class Box(texwrap.Box):
 
 
 class LineGlue(Glue):
-    def __init__(self, height=0, stretch=0, shrink=0):
+    def __init__(self, doc, height=0, stretch=0, shrink=0):
         super().__init__(height, stretch, shrink)
         self.height = height
 
@@ -522,9 +522,10 @@ class LineGlue(Glue):
 class Line(texwrap.Box):
     """Class representing a line of text."""
 
-    def __init__(self, height, boxes):
-        super().__init__(height)
-        self.height = height
+    def __init__(self, doc, boxes):
+        super().__init__(doc.settings.leading)
+        self.doc = doc
+        self.height = self.width
         self.boxes = boxes
 
     def has_quarter(self):
@@ -552,12 +553,12 @@ class Line(texwrap.Box):
 class Heading(Line):
     """Class representing a chapter heading."""
 
-    def __init__(self, leading, lines):
-        super().__init__(leading * 1.8, lines)
-        self.leading = leading
+    def __init__(self, doc, lines):
+        super().__init__(doc, lines)
+        self.height = doc.settings.leading * 1.8
 
     def draw(self, cr, pos, width):
-        offset = self.leading / 2
+        offset = self.doc.settings.leading / 2
         height = self.height - offset
 
         linepos = qh.Vector(pos.x, pos.y)
