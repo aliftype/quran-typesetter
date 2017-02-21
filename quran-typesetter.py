@@ -77,7 +77,7 @@ class Document:
 
         self.settings = settings = Settings()
         self.state = State()
-        self.shaper = Shaper(settings.body_font, settings.body_font_size)
+        self.shaper = Shaper(self)
 
         surface = qh.PDFSurface.create(filename, (settings.page_width,
                                                   settings.page_height))
@@ -211,9 +211,11 @@ class Shaper:
     # Cache for shaped words.
     word_cache = {}
 
-    def __init__(self, font_name, font_size):
-        ft_face = ft.find_face(font_name)
-        ft_face.set_char_size(size=font_size, resolution=qh.base_dpi)
+    def __init__(self, doc):
+        self.doc = doc
+        ft_face = ft.find_face(doc.settings.body_font)
+        ft_face.set_char_size(size=doc.settings.body_font_size,
+                              resolution=qh.base_dpi)
         self.font = hb.Font.ft_create(ft_face)
         self.buffer = hb.Buffer.create()
 
