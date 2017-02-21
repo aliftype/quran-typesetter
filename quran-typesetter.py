@@ -61,13 +61,6 @@ class Settings:
         return x
 
 
-class State:
-    """Class holding document wide state."""
-
-    def __init__(self):
-        self.quarter = 1
-
-
 class Document:
     """Class representing the main document and holding document-wide settings
        and state."""
@@ -76,7 +69,6 @@ class Document:
         logger.debug("Initializing the document: %s", filename)
 
         self.settings = settings = Settings()
-        self.state = State()
         self.shaper = Shaper(self)
 
         surface = qh.PDFSurface.create(filename, (settings.page_width,
@@ -90,6 +82,9 @@ class Document:
         cr.set_source_colour(qh.Colour.grey(0))
 
         self.chapters = chapters
+
+        # State.
+        self.current_quarter = 1
 
     def save(self):
         lines = self._create_lines()
@@ -334,7 +329,7 @@ class Page:
             line.draw(cr, pos, text_width)
             if line.has_quarter():
                 self._show_quarter(i, pos.y)
-                self.doc.state.quarter += 1
+                self.doc.current_quarter += 1
             pos.y += line.height
 
         # Show page number.
@@ -367,7 +362,7 @@ class Page:
         quarters, a part is 2 groups.
         """
 
-        quarter = self.doc.state.quarter
+        quarter = self.doc.current_quarter
         shaper = self.doc.shaper
 
         boxes = []
