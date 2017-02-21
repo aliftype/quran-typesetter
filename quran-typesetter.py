@@ -483,22 +483,16 @@ class Penalty(texwrap.Penalty):
         return False
 
 
-class Box:
+class Box(texwrap.Box):
     """Class representing a word."""
 
     def __init__(self, width, glyphs):
-        self.width = width
-        self.stretch = self.shrink = 0
-        self.penalty = 0
-        self.flagged = 0
-
+        super().__init__(width)
         self.glyphs = glyphs
         self.quarter = False
 
-    def is_glue(self):         return False
-    def is_box(self):          return True
-    def is_penalty(self):      return False
-    def is_forced_break(self): return False
+    def has_quarter(self):
+        return self.quarter
 
     def draw(self, cr, pos, text_width=0):
         cr.save()
@@ -513,24 +507,16 @@ class LineGlue(Glue):
         self.height = height
 
 
-class Line:
+class Line(texwrap.Box):
     """Class representing a line of text."""
 
     def __init__(self, height, boxes):
+        super().__init__(height)
         self.height = height
-        self.stretch = self.shrink = 0
-        self.penalty = 0
-        self.flagged = 0
-
         self.boxes = boxes
 
-    def is_glue(self):         return False
-    def is_box(self):          return True
-    def is_penalty(self):      return False
-    def is_forced_break(self): return False
-
     def has_quarter(self):
-        return any([box.quarter for box in self.boxes if box.is_box()])
+        return any([box.has_quarter() for box in self.boxes if box.is_box()])
 
     def draw(self, cr, pos, text_width):
         self.strip()
@@ -551,31 +537,19 @@ class Line:
             self.boxes.pop()
 
 
-class Heading:
+class Heading(Line):
     """Class representing a chapter heading."""
 
     def __init__(self, leading, lines):
-        self.height = leading * 1.8
-        self.stretch = self.shrink = 0
-        self.penalty = 0
-        self.flagged = 0
-
+        super().__init__(leading * 1.8, lines)
         self.leading = leading
-        self.lines = lines
-
-    def is_glue(self):         return False
-    def is_box(self):          return True
-    def is_penalty(self):      return False
-    def is_forced_break(self): return False
-
-    def has_quarter(self):     return False
 
     def draw(self, cr, pos, width):
         offset = self.leading / 2
         height = self.height - offset
 
         linepos = qh.Vector(pos.x, pos.y)
-        for line in self.lines:
+        for line in self.boxes:
             line.draw(cr, linepos, width)
             linepos.x = pos.x
             linepos.y += line.height - offset / 1.2
