@@ -97,7 +97,7 @@ class Document:
 
         logger.info("Drawing pages…")
         for page in pages:
-            page.draw(self.cr, self.shaper, self.settings, self.state)
+            page.draw(self.cr)
 
     def _create_lines(self):
         """Processes each chapter and creates lines for the whole document."""
@@ -115,7 +115,7 @@ class Document:
 
         logger.info("Breaking lines into pages…")
 
-        pages = [Page([], 1)]
+        pages = [Page(self, [], 1)]
         lengths = [self.settings.leading * self.settings.lines_per_page]
         breaks = lines.compute_breakpoints(lengths)
         assert breaks[-1] == len(lines) - 1
@@ -125,7 +125,7 @@ class Document:
             ratio = lines.compute_adjustment_ratio(start, breakpoint, i,
                                                    lengths)
 
-            page = Page([], len(pages) + 1)
+            page = Page(self, [], len(pages) + 1)
             for j in range(start, breakpoint):
                 line = lines[j]
                 if line.is_glue():
@@ -309,13 +309,16 @@ def format_number(number):
 class Page:
     """Class representing a page of text."""
 
-    def __init__(self, lines, number):
+    def __init__(self, doc, lines, number):
+        self.doc = doc
         self.lines = lines
         self.number = number
 
-    def draw(self, cr, shaper, settings, state):
+    def draw(self, cr):
         logger.debug("Drawing page %d…", self.number)
 
+        shaper = self.doc.shaper
+        settings = self.doc.settings
         self.cr = cr
 
         if not self.lines:
@@ -330,8 +333,8 @@ class Page:
             text_width = settings.get_text_width(i)
             line.draw(cr, pos, text_width)
             if line.has_quarter():
-                self._show_quarter(i, pos.y, state.quarter, shaper, settings)
-                state.quarter += 1
+                self._show_quarter(i, pos.y)
+                self.doc.state.quarter += 1
             pos.y += line.height
 
         # Show page number.
@@ -358,11 +361,14 @@ class Page:
 
         cr.show_page()
 
-    def _show_quarter(self, line, y, quarter, shaper, settings):
+    def _show_quarter(self, line, y):
         """
         Draw the quarter, group and part text on the margin. A group is 4
         quarters, a part is 2 groups.
         """
+
+        quarter = self.doc.state.quarter
+        shaper = self.doc.shaper
 
         boxes = []
         num = quarter % 4
@@ -388,10 +394,10 @@ class Page:
         # We want the text to be smaller than the body size…
         scale = .8
         # … and the leading to be tighter.
-        leading = settings.body_font_size
+        leading = self.doc.settings.body_font_size
 
         w = max([box.width for box in boxes])
-        x = settings.get_side_mark_pos(self, line, w)
+        x = self.doc.settings.get_side_mark_pos(self, line, w)
         # Center the boxes vertically around the line.
         # XXX: should use the box height / 2
         y -= leading / 2
