@@ -17,7 +17,7 @@ class Document:
        and state."""
 
     def __init__(self, chapters, filename, decorations=True):
-        logger.debug("Initializing the document: %s", filename)
+        logger.info("Initializing the document: %s", filename)
 
         # Settungs
         # The defaults here roughly match “the 12-lines Mushaf”.
@@ -144,6 +144,8 @@ class Document:
 
     def _process_chapter(self, chapter):
         """Shapes the text and breaks it into lines."""
+
+        logger.info("Chapter %d…", chapter.number)
 
         lengths = self.text_widths
         nodes = self.shaper.shape_paragraph(chapter.text)
@@ -305,7 +307,7 @@ class Page:
         self.number = number
 
     def draw(self, cr):
-        logger.debug("Drawing page %d…", self.number)
+        logger.info("Page %d…", self.number)
 
         shaper = self.doc.shaper
         self.cr = cr
