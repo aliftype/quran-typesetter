@@ -126,9 +126,6 @@ class Document:
                     line.height = line.compute_width(ratio)
                 page.lines.append(line)
 
-            while not page.lines[-1].is_box():
-                page.lines.pop()
-
             pages.append(page)
             start = breakpoint + 1
 
@@ -317,6 +314,8 @@ class Page:
             cr.show_page()
             return
 
+        self.strip()
+
         lines = self.lines
         pos = qh.Vector(0, self.doc.top_margin)
         for i, line in enumerate(lines):
@@ -404,6 +403,10 @@ class Page:
             self.cr.restore()
 
             y += leading
+
+    def strip(self):
+        while not self.lines[-1].is_box():
+            self.lines.pop()
 
 
 class LineList(texwrap.ObjectList):
