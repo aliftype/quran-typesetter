@@ -263,7 +263,7 @@ class Shaper:
         # as word separators.
         word = ""
         for i, ch in enumerate(text.strip()):
-            if ch in (" ", "\n", "\u00A0"):
+            if ch in (" ", "\u00A0"):
                 # Drop quarter glyph at start of chapter but keep the mark.
                 if ch == "\u00A0" and i == 1 and text[0] == "\u06DE":
                     box = Box(self.doc, 0, [])
@@ -634,8 +634,11 @@ if __name__ == "__main__":
         path = os.path.join(args.datadir, "%03d.txt" % i)
         if os.path.isfile(path):
             with open(path, "r") as textfile:
-                lines = textfile.readlines()
-                chapter = Chapter("".join(lines), i, *metadata[i], len(lines))
+                lines = []
+                for j, line in enumerate(textfile.readlines()):
+                    line = line.strip("\n")
+                    lines.append(line)
+                chapter = Chapter(" ".join(lines), i, *metadata[i], len(lines))
                 chapters.append(chapter)
         else:
             logger.error("File not found: %s", path)
