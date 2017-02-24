@@ -66,10 +66,10 @@ class Document:
         line = self.lines_per_page - 1
         text_width = self.get_text_width(line)
         pos.x = self.get_text_start_pos(page, line)
-        pos.x -= text_width / 2
+        pos.x -= text_width/2
 
         # Center the box around the position
-        pos.x -= width / 2
+        pos.x -= width/2
 
         return pos
 
@@ -80,7 +80,7 @@ class Document:
             return self.outer_margin + self.get_text_width(line)
 
     def get_side_mark_pos(self, page, line, width):
-        x = (self.outer_margin / 2) - (width / 2)
+        x = self.outer_margin/2 - width/2
         if page.number % 2 == 0:
             x += self.get_text_start_pos(page, line)
         return x
@@ -278,7 +278,7 @@ class Shaper:
                 if ch == "\u00A0":
                     nodes.append(Penalty(self.doc, 0, texwrap.INFINITY))
 
-                nodes.append(Glue(self.doc, space, space / 2, space / 2))
+                nodes.append(Glue(self.doc, space, space/2, space/2))
                 word = ""
             else:
                 word += ch
@@ -335,7 +335,7 @@ class Page:
         if self.doc.page_decorations:
             o = 8
             x = self.doc.get_text_start_pos(self, 0) + o
-            y = self.doc.top_margin - self.doc.leading / 2 - o
+            y = self.doc.top_margin - self.doc.leading/2 - o
             w = self.doc.get_text_width(0) + o * 2
             h = self.doc.leading * self.doc.lines_per_page + o
 
@@ -369,14 +369,14 @@ class Page:
             boxes.append(shaper.shape_word("الحزب"))
         else:
             # A group…
-            group = format_number((quarter / 4) + 1)
+            group = format_number(quarter/4 + 1)
             if quarter % 8:
                 # … without a part.
                 boxes.append(shaper.shape_word("حزب"))
                 boxes.append(shaper.shape_word(group))
             else:
                 # … with a part.
-                part = format_number((quarter / 8) + 1)
+                part = format_number(quarter/8 + 1)
                 # XXX: [::-1] is a hack to get the numbers LTR
                 boxes.append(shaper.shape_word("حزب %s" % group[::-1]))
                 boxes.append(shaper.shape_word("جزء %s" % part[::-1]))
@@ -389,11 +389,11 @@ class Page:
         w = max([box.width for box in boxes])
         x = self.doc.get_side_mark_pos(self, line, w)
         # Center the boxes vertically around the line.
-        # XXX: should use the box height / 2
-        y -= leading / 2
+        # XXX: should use the box height/2
+        y -= leading/2
         for box in boxes:
             # Center the box horizontally relative to the others
-            offset = (w - box.width) * scale / 2
+            offset = (w - box.width) * scale/2
 
             self.cr.save()
             self.cr.translate((x + offset, y))
@@ -535,7 +535,7 @@ class Line(texwrap.Box):
         width = sum([box.width for box in self.boxes])
         # Center lines not equal to text width.
         if not math.isclose(width, text_width):
-            pos.x -= (text_width - width) / 2
+            pos.x -= (text_width - width)/2
 
         for box in self.boxes:
             # We start drawing from the right edge of the text block,
@@ -557,14 +557,14 @@ class Heading(Line):
         self.height = doc.leading * 1.8
 
     def draw(self, cr, pos, width):
-        offset = self.doc.leading / 2
+        offset = self.doc.leading/2
         height = self.height - offset
 
         linepos = qh.Vector(pos.x, pos.y)
         for line in self.boxes:
             line.draw(cr, linepos, width)
             linepos.x = pos.x
-            linepos.y += line.height - offset / 1.2
+            linepos.y += line.height - offset/1.2
 
         cr.save()
         cr.set_line_width(.5)
