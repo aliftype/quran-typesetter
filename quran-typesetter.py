@@ -637,6 +637,8 @@ if __name__ == "__main__":
                 lines = []
                 for j, line in enumerate(textfile.readlines()):
                     line = line.strip("\n")
+                    if line.startswith("\u06DE "):
+                        print(j, line)
                     lines.append(line)
                 chapter = Chapter(" ".join(lines), i, *metadata[i], len(lines))
                 chapters.append(chapter)
