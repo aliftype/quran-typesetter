@@ -240,7 +240,8 @@ class Shaper:
         # Flag boxes with “quarter” symbol, as it needs some special
         # handling later.
         if word.startswith("\u06DE"):
-            box.quarter = True
+            box.quarter = self.doc.current_quarter
+            self.doc.current_quarter += 1
 
         return box
 
@@ -322,9 +323,8 @@ class Page:
             pos.x = self.doc.get_text_start_pos(self, i)
             text_width = self.doc.get_text_width(i)
             line.draw(cr, pos, text_width)
-            if line.has_quarter():
-                self._show_quarter(i, pos.y)
-                self.doc.current_quarter += 1
+            if line.get_quarter():
+                self._show_quarter(line, line.get_quarter(), pos.y)
             pos.y += line.height
 
         # Show page number.
@@ -352,16 +352,15 @@ class Page:
 
         cr.show_page()
 
-    def _show_quarter(self, line, y):
+    def _show_quarter(self, line, quarter, y):
         """
         Draw the quarter, group and part text on the margin. A group is 4
         quarters, a part is 2 groups.
         """
 
-        quarter = self.doc.current_quarter
-        shaper = self.doc.shaper
-
         logger.debug("Quarter %d at page %d", quarter, self.number)
+
+        shaper = self.doc.shaper
 
         boxes = []
         num = quarter % 4
@@ -482,7 +481,7 @@ class Glue(texwrap.Glue):
     def draw(self, cr, pos, text_width=0):
         pass
 
-    def has_quarter(self):
+    def get_quarter(self):
         return False
 
 
@@ -496,7 +495,7 @@ class Penalty(texwrap.Penalty):
     def draw(self, cr, pos, text_width=0):
         pass
 
-    def has_quarter(self):
+    def get_quarter(self):
         return False
 
 
@@ -507,9 +506,9 @@ class Box(texwrap.Box):
         super().__init__(width)
         self.doc = doc
         self.glyphs = glyphs
-        self.quarter = False
+        self.quarter = 0
 
-    def has_quarter(self):
+    def get_quarter(self):
         return self.quarter
 
     def draw(self, cr, pos, text_width=0):
@@ -534,8 +533,11 @@ class Line(texwrap.Box):
         self.height = self.width
         self.boxes = boxes
 
-    def has_quarter(self):
-        return any([box.has_quarter() for box in self.boxes if box.is_box()])
+    def get_quarter(self):
+        for box in self.boxes:
+            if box.get_quarter():
+                return box.get_quarter()
+        return 0
 
     def draw(self, cr, pos, text_width):
         self.strip()
