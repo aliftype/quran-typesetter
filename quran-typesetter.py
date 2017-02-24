@@ -11,6 +11,9 @@ logging.basicConfig(format="%(asctime)s - %(message)s")
 logger = logging.getLogger("typesetter")
 logger.setLevel(logging.INFO)
 
+Q_STR = "\u06DE\u00A0"
+Q_PUA = 0x100000
+
 
 class Document:
     """Class representing the main document and holding document-wide settings
@@ -50,9 +53,6 @@ class Document:
         cr.set_source_colour(qh.Colour.grey(0))
 
         self.chapters = chapters
-
-        # State.
-        self.current_quarter = 1
 
     def get_text_width(self, line):
         if line >= len(self.text_widths):
@@ -239,9 +239,8 @@ class Shaper:
 
         # Flag boxes with “quarter” symbol, as it needs some special
         # handling later.
-        if word.startswith("\u06DE"):
-            box.quarter = self.doc.current_quarter
-            self.doc.current_quarter += 1
+        if ord(word[0]) - Q_PUA > 0:
+            box.quarter = ord(word[0]) - Q_PUA
 
         return box
 
@@ -264,14 +263,6 @@ class Shaper:
         word = ""
         for i, ch in enumerate(text.strip()):
             if ch in (" ", "\u00A0"):
-                # Drop quarter glyph at start of chapter but keep the mark.
-                if ch == "\u00A0" and i == 1 and text[0] == "\u06DE":
-                    box = Box(self.doc, 0, [])
-                    box.quarter = True
-                    nodes.append(box)
-                    word = ""
-                    continue
-
                 nodes.append(self.shape_word(word))
 
                 # Prohibit line breaking at no-break space.
@@ -629,21 +620,31 @@ if __name__ == "__main__":
         logger.error("File not found: %s", path)
         sys.exit(1)
 
-    chapters = []
-    for i in args.chapters:
+    quarter = 0
+    all_chapters = []
+    for i in range(1, 115):
         path = os.path.join(args.datadir, "%03d.txt" % i)
         if os.path.isfile(path):
             with open(path, "r") as textfile:
                 lines = []
                 for j, line in enumerate(textfile.readlines()):
                     line = line.strip("\n")
-                    if line.startswith("\u06DE "):
-                        print(j, line)
+                    if line.startswith(Q_STR):
+                        quarter += 1
+                        if j == 0:
+                            # Drop quarter glyph at start of chapter.
+                            line = chr(Q_PUA + quarter) + line[2:]
+                        else:
+                            line = chr(Q_PUA + quarter) + Q_STR + line[2:]
                     lines.append(line)
                 chapter = Chapter(" ".join(lines), i, *metadata[i], len(lines))
-                chapters.append(chapter)
+                all_chapters.append(chapter)
         else:
             logger.error("File not found: %s", path)
             sys.exit(1)
+
+    chapters = []
+    for i in args.chapters:
+        chapters.append(all_chapters[i - 1])
 
     main(chapters, args.outfile, args.decorations)
