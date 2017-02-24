@@ -361,6 +361,8 @@ class Page:
         quarter = self.doc.current_quarter
         shaper = self.doc.shaper
 
+        logger.debug("Quarter %d at page %d", quarter, self.number)
+
         boxes = []
         num = quarter % 4
         if num:
