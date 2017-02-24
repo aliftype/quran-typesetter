@@ -574,6 +574,46 @@ class Heading(Line):
         cr.restore()
 
 
+def read_data(datadir):
+    path = os.path.join(datadir, "meta.txt")
+    if os.path.isfile(path):
+        with open(path, "r") as textfile:
+            metadata = {}
+            lines = [l.strip().split("\t") for l in textfile.readlines()]
+            for num, line in enumerate(lines):
+                num += 1
+                metadata[num] = [line[0], line[1], True]
+                if len(line) >= 3:
+                    metadata[num][2] = int(line[2])
+    else:
+        logger.error("File not found: %s", path)
+        return
+
+    quarter = 0
+    chapters = []
+    for i in range(1, 115):
+        path = os.path.join(datadir, "%03d.txt" % i)
+        if os.path.isfile(path):
+            with open(path, "r") as textfile:
+                lines = []
+                for j, line in enumerate(textfile.readlines()):
+                    line = line.strip("\n")
+                    if line.startswith(Q_STR):
+                        quarter += 1
+                        if j == 0:
+                            # Drop quarter glyph at start of chapter.
+                            line = chr(Q_PUA + quarter) + line[2:]
+                        else:
+                            line = chr(Q_PUA + quarter) + Q_STR + line[2:]
+                    lines.append(line)
+                chapter = Chapter(" ".join(lines), i, *metadata[i], len(lines))
+                chapters.append(chapter)
+        else:
+            logger.error("File not found: %s", path)
+            return
+
+    return chapters
+
 def main(chapters, filename, decorations):
     document = Document(chapters, filename, decorations)
     document.save()
@@ -606,42 +646,9 @@ if __name__ == "__main__":
     if args.quite:
         logger.setLevel(logging.ERROR)
 
-    path = os.path.join(args.datadir, "meta.txt")
-    if os.path.isfile(path):
-        with open(path, "r") as textfile:
-            metadata = {}
-            lines = [l.strip().split("\t") for l in textfile.readlines()]
-            for num, line in enumerate(lines):
-                num += 1
-                metadata[num] = [line[0], line[1], True]
-                if len(line) >= 3:
-                    metadata[num][2] = int(line[2])
-    else:
-        logger.error("File not found: %s", path)
+    all_chapters = read_data(args.datadir)
+    if all_chapters is None:
         sys.exit(1)
-
-    quarter = 0
-    all_chapters = []
-    for i in range(1, 115):
-        path = os.path.join(args.datadir, "%03d.txt" % i)
-        if os.path.isfile(path):
-            with open(path, "r") as textfile:
-                lines = []
-                for j, line in enumerate(textfile.readlines()):
-                    line = line.strip("\n")
-                    if line.startswith(Q_STR):
-                        quarter += 1
-                        if j == 0:
-                            # Drop quarter glyph at start of chapter.
-                            line = chr(Q_PUA + quarter) + line[2:]
-                        else:
-                            line = chr(Q_PUA + quarter) + Q_STR + line[2:]
-                    lines.append(line)
-                chapter = Chapter(" ".join(lines), i, *metadata[i], len(lines))
-                all_chapters.append(chapter)
-        else:
-            logger.error("File not found: %s", path)
-            sys.exit(1)
 
     chapters = []
     for i in args.chapters:
