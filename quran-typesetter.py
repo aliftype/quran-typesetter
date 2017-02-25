@@ -272,7 +272,7 @@ class Shaper:
                 if ch == "\u00A0":
                     nodes.append(Penalty(self.doc, 0, texwrap.INFINITY))
 
-                nodes.append(Glue(self.doc, space, space/2, space/2))
+                nodes.append(Glue(self.doc, space, space/2, space/1.5))
                 word = ""
             else:
                 word += ch
