@@ -13,6 +13,7 @@ logger.setLevel(logging.INFO)
 
 Q_STR = "\u06DE\u00A0"
 Q_PUA = 0x100000
+P_STR = "\u06E9"
 
 
 class Document:
@@ -241,6 +242,8 @@ class Shaper:
         # handling later.
         if ord(word[0]) - Q_PUA > 0:
             box.quarter = ord(word[0]) - Q_PUA
+        if word.startswith(P_STR):
+            box.prostration = True
 
         return box
 
@@ -314,8 +317,9 @@ class Page:
             pos.x = self.doc.get_text_start_pos(self, i)
             text_width = self.doc.get_text_width(i)
             line.draw(cr, pos, text_width)
-            if line.get_quarter():
-                self._show_quarter(line, line.get_quarter(), pos.y)
+            if line.get_quarter() or line.get_prostration():
+                self._show_quarter(line, line.get_quarter(),
+                                   line.get_prostration(), pos.y)
             pos.y += line.height
 
         # Show page number.
@@ -343,36 +347,42 @@ class Page:
 
         cr.show_page()
 
-    def _show_quarter(self, line, quarter, y):
+    def _show_quarter(self, line, quarter, prostration, y):
         """
         Draw the quarter, group and part text on the margin. A group is 4
         quarters, a part is 2 groups.
         """
 
-        logger.debug("Quarter %d at page %d", quarter, self.number)
+        if quarter:
+            logger.debug("Quarter %d at page %d", quarter, self.number)
+        if prostration:
+            logger.debug("Prostration at page %d", self.number)
 
         shaper = self.doc.shaper
 
         boxes = []
-        num = quarter % 4
-        if num:
-            # A quarter.
-            words = ("ربع", "نصف", "ثلاثة أرباع")
-            boxes.append(shaper.shape_word(words[num - 1]))
-            boxes.append(shaper.shape_word("الحزب"))
-        else:
-            # A group…
-            group = format_number(quarter/4 + 1)
-            if quarter % 8:
-                # … without a part.
-                boxes.append(shaper.shape_word("حزب"))
-                boxes.append(shaper.shape_word(group))
+        if prostration:
+            boxes.append(shaper.shape_word("سجدة"))
+        if quarter:
+            num = quarter % 4
+            if num:
+                # A quarter.
+                words = ("ربع", "نصف", "ثلاثة أرباع")
+                boxes.append(shaper.shape_word(words[num - 1]))
+                boxes.append(shaper.shape_word("الحزب"))
             else:
-                # … with a part.
-                part = format_number(quarter/8 + 1)
-                # XXX: [::-1] is a hack to get the numbers LTR
-                boxes.append(shaper.shape_word("حزب %s" % group[::-1]))
-                boxes.append(shaper.shape_word("جزء %s" % part[::-1]))
+                # A group…
+                group = format_number(quarter/4 + 1)
+                if quarter % 8:
+                    # … without a part.
+                    boxes.append(shaper.shape_word("حزب"))
+                    boxes.append(shaper.shape_word(group))
+                else:
+                    # … with a part.
+                    part = format_number(quarter/8 + 1)
+                    # XXX: [::-1] is a hack to get the numbers LTR
+                    boxes.append(shaper.shape_word("حزب %s" % group[::-1]))
+                    boxes.append(shaper.shape_word("جزء %s" % part[::-1]))
 
         # We want the text to be smaller than the body size…
         scale = .8
@@ -380,10 +390,10 @@ class Page:
         leading = self.doc.body_font_size
 
         w = max([box.width for box in boxes])
+        h = leading * len(boxes)
         x = self.doc.get_side_mark_pos(self, line, w)
         # Center the boxes vertically around the line.
-        # XXX: should use the box height/2
-        y -= leading/2
+        y -= h * scale/2
         for box in boxes:
             # Center the box horizontally relative to the others
             offset = (w - box.width) * scale/2
@@ -473,6 +483,9 @@ class Glue(texwrap.Glue):
         pass
 
     def get_quarter(self):
+        return 0
+
+    def get_prostration(self):
         return False
 
 
@@ -487,6 +500,9 @@ class Penalty(texwrap.Penalty):
         pass
 
     def get_quarter(self):
+        return 0
+
+    def get_prostration(self):
         return False
 
 
@@ -498,9 +514,13 @@ class Box(texwrap.Box):
         self.doc = doc
         self.glyphs = glyphs
         self.quarter = 0
+        self.prostration = False
 
     def get_quarter(self):
         return self.quarter
+
+    def get_prostration(self):
+        return self.prostration
 
     def draw(self, cr, pos, text_width=0):
         cr.save()
@@ -529,6 +549,12 @@ class Line(texwrap.Box):
             if box.get_quarter():
                 return box.get_quarter()
         return 0
+
+    def get_prostration(self):
+        for box in self.boxes:
+            if box.get_prostration():
+                return box.get_prostration()
+        return False
 
     def draw(self, cr, pos, text_width):
         self.strip()
