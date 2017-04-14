@@ -358,7 +358,7 @@ class NodeList(list):
 
                      # XXX is 'or' really correct here?  This seems to
                      # remove all active nodes on encountering a forced break!
-                     if (r<-1 or B.is_forced_break()):
+                     if (r < -1 or B.is_forced_break()):
                          # Deactivate node A
                          if len(active_nodes) == 1:
                              if self.debug:
