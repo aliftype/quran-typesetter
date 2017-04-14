@@ -257,7 +257,7 @@ class Shaper:
         do anything special around spaces, which in turn allows us to cache
         the shaped words.
         """
-        nodes = linebreak.ObjectList()
+        nodes = linebreak.NodeList()
 
         # Get the natural space width
         space = self.shape_word(" ").width
@@ -412,7 +412,7 @@ class Page:
             self.lines.pop()
 
 
-class LineList(linebreak.ObjectList):
+class LineList(linebreak.NodeList):
 
     def __init__(self, doc):
         super().__init__()

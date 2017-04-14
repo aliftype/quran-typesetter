@@ -8,9 +8,9 @@ programming to find a globally optimal division into lines, enabling
 it to produce more attractive results than a first-fit or best-fit
 algorithm can.  For a full description, see the reference.
 
-The module provides the ObjectList class, which is a list of Box,
+The module provides the NodeList class, which is a list of Box,
 Glue, and Penalty instances.  The elements making up a paragraph of
-text should be assembled into a single ObjectList.  Boxes represent
+text should be assembled into a single NodeList.  Boxes represent
 characters of type, and their only attribute is width.  Glue
 represents a space of variable size; in addition to a preferred width,
 glue can also stretch and shrink, to an amount that's specified by the
@@ -21,7 +21,7 @@ penalty.  Negative penalty values encourage line breaks at a given
 point, and a value of -INFINITY forces a line break at a particular
 point.
 
-The compute_breakpoints() method of ObjectList returns a list of
+The compute_breakpoints() method of NodeList returns a list of
 integers containing the indexes at which the paragraph should be
 broken.  If you're setting the text to be ragged-right (or
 ragged-left, I suppose), then simply loop over the text and insert
@@ -44,8 +44,8 @@ __version__ = "1.01"
 
 INFINITY = 1000
 
-# Three classes defining the three different types of object that
-# can go into an ObjectList.
+# Three classes defining the three different types of nides that
+# can go into an NodeList.
 
 class Box:
     """Class representing an unbreakable collection of glyphs.  Boxes have a
@@ -124,9 +124,9 @@ class _BreakNode:
     def __repr__(self):
         return '<_BreakNode at %i>' % self.position
 
-class ObjectList(list):
+class NodeList(list):
 
-    """Class representing a list of Box, Glue, and Penalty objects.
+    """Class representing a list of Box, Glue, and Penalty nodes.
     Supports the same methods as regular Python lists.
     """
 
@@ -260,7 +260,7 @@ class ObjectList(list):
                             flagged_demerit = 100, # alpha in the paper
                             ):
         """Compute a list of optimal breakpoints for the paragraph
-        represented by this ObjectList, returning them as a list of
+        represented by this NodeList, returning them as a list of
         integers, each one the index of a breakpoint.
 
         line_lengths : a list of integers giving the lengths of each
@@ -482,8 +482,8 @@ if __name__ == '__main__':
 
     line_width = 100                    # Line width to use for formatting
     full_justify = False                # If True, do full justification
-    # Turn chunk of text into an ObjectList.
-    L = ObjectList()
+    # Turn chunk of text into an NodeList.
+    L = NodeList()
     for ch in text:
         if ch in ' \n':
             # Append interword space -- 2 units +/- 1
