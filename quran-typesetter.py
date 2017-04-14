@@ -3,7 +3,8 @@ import math
 
 import harfbuzz as hb
 import qahirah as qh
-import wrap as texwrap
+
+import linebreak
 
 ft = qh.get_ft_lib()
 
@@ -256,7 +257,7 @@ class Shaper:
         do anything special around spaces, which in turn allows us to cache
         the shaped words.
         """
-        nodes = texwrap.ObjectList()
+        nodes = linebreak.ObjectList()
 
         # Get the natural space width
         space = self.shape_word(" ").width
@@ -270,7 +271,7 @@ class Shaper:
 
                 # Prohibit line breaking at no-break space.
                 if ch == "\u00A0":
-                    nodes.append(Penalty(self.doc, 0, texwrap.INFINITY))
+                    nodes.append(Penalty(self.doc, 0, linebreak.INFINITY))
 
                 nodes.append(Glue(self.doc, space, space/2, space/1.5))
                 word = ""
@@ -411,7 +412,7 @@ class Page:
             self.lines.pop()
 
 
-class LineList(texwrap.ObjectList):
+class LineList(linebreak.ObjectList):
 
     def __init__(self, doc):
         super().__init__()
@@ -472,8 +473,8 @@ class LineList(texwrap.ObjectList):
         return breaks
 
 
-class Glue(texwrap.Glue):
-    """Wrapper around texwrap.Glue to hold our common API."""
+class Glue(linebreak.Glue):
+    """Wrapper around linebreak.Glue to hold our common API."""
 
     def __init__(self, doc, width, stretch, shrink):
         super().__init__(width, stretch, shrink)
@@ -489,8 +490,8 @@ class Glue(texwrap.Glue):
         return False
 
 
-class Penalty(texwrap.Penalty):
-    """Wrapper around texwrap.Penalty to hold our common API."""
+class Penalty(linebreak.Penalty):
+    """Wrapper around linebreak.Penalty to hold our common API."""
 
     def __init__(self, doc, width, penalty, flagged=0):
         super().__init__(width, penalty, flagged)
@@ -506,7 +507,7 @@ class Penalty(texwrap.Penalty):
         return False
 
 
-class Box(texwrap.Box):
+class Box(linebreak.Box):
     """Class representing a word."""
 
     def __init__(self, doc, width, glyphs):
@@ -534,7 +535,7 @@ class LineGlue(Glue):
         self.height = self.width
 
 
-class Line(texwrap.Box):
+class Line(linebreak.Box):
     """Class representing a line of text."""
 
     def __init__(self, doc, boxes):
