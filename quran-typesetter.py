@@ -401,7 +401,7 @@ class Page:
             self.cr.save()
             self.cr.translate((x + offset, y))
             self.cr.scale((scale, scale))
-            self.cr.show_glyphs(box.glyphs)
+            self.cr.show_glyphs(box.data)
             self.cr.restore()
 
             y += leading
@@ -510,9 +510,8 @@ class Box(texwrap.Box):
     """Class representing a word."""
 
     def __init__(self, doc, width, glyphs):
-        super().__init__(width)
+        super().__init__(width, glyphs)
         self.doc = doc
-        self.glyphs = glyphs
         self.quarter = 0
         self.prostration = False
 
@@ -525,7 +524,7 @@ class Box(texwrap.Box):
     def draw(self, cr, pos, text_width=0):
         cr.save()
         cr.translate(pos)
-        cr.show_glyphs(self.glyphs)
+        cr.show_glyphs(self.data)
         cr.restore()
 
 

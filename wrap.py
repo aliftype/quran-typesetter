@@ -48,12 +48,12 @@ INFINITY = 1000
 # can go into an ObjectList.
 
 class Box:
-    """Class representing a glyph or character.  Boxes have a fixed
-    width that doesn't change.
+    """Class representing an unbreakable collection of glyphs.  Boxes have a
+    fixed width that doesn't change.
     """
 
-    def __init__(self, width, character=None):
-        self.character = character
+    def __init__(self, width, data=None):
+        self.data = data
         self.width = width
         self.stretch = self.shrink = 0
         self.penalty = 0
@@ -521,8 +521,8 @@ if __name__ == '__main__':
                 else: width = 1
                 sys.stdout.write(' '*width)
 
-            elif hasattr(box, 'character'):
-                sys.stdout.write( box.character )
+            elif hasattr(box, 'data'):
+                sys.stdout.write(box.data)
 
         line_start = breakpoint + 1
         sys.stdout.write('\n')
