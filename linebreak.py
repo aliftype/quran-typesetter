@@ -432,8 +432,8 @@ class NodeList(list):
                 # The two branches of this 'if' statement
                 # are for handling values of looseness that are
                 # either positive or negative.
-                if ((looseness<= delta < best) or
-                    (best<delta<looseness) ):
+                if ((looseness <= delta < best) or
+                    (best < delta < looseness) ):
                     s = delta
                     d = br.demerits
                     b = br
