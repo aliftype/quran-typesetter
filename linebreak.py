@@ -313,9 +313,9 @@ class NodeList(list):
             self.sum_shrink[i] = shrink_sum
 
             node = self[i]
-            width_sum   = width_sum + node.width
-            stretch_sum = stretch_sum + node.stretch
-            shrink_sum  = shrink_sum + node.shrink
+            width_sum   += node.width
+            stretch_sum += node.stretch
+            shrink_sum  += node.shrink
 
         # Initialize list of active nodes to a single break at the
         # beginning of the text.
