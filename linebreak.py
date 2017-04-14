@@ -150,15 +150,6 @@ class NodeList(list):
         else:
             return False
 
-    def is_forced_break(self, i):
-        "Return true if position 'i' is a forced breakpoint."
-
-        node = self[i]
-        if node.is_penalty() and node.penalty == -INFINITY:
-            return True
-        else:
-            return False
-
     def measure_width(self, pos1, pos2):
         "Add up the widths between positions 1 and 2"
 
@@ -374,7 +365,7 @@ class NodeList(list):
                          # Compute demerits and fitness class
                          if p[i] >= 0:
                              demerits = (1 + 100 * abs(r)**3 + p[i]) ** 3
-                         elif self.is_forced_break(i):
+                         elif B.is_forced_break():
                               demerits = (1 + 100 * abs(r)**3) ** 2 - p[i]**2
                          else:
                              demerits = (1 + 100 * abs(r)**3) ** 2
