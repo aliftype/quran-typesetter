@@ -3,7 +3,7 @@ import math
 
 import harfbuzz as hb
 import qahirah as qh
-import texlib.wrap as texwrap
+import wrap as texwrap
 
 ft = qh.get_ft_lib()
 
