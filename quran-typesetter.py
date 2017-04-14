@@ -221,11 +221,15 @@ class Shaper:
 
         assert word
 
-        if word not in self.doc.word_cache:
+        text = word
+        if ord(word[0]) > Q_PUA:
+            text = word[1:]
+
+        if text not in self.doc.word_cache:
             self.buffer.clear_contents()
-            self.buffer.add_str(word)
+            self.buffer.add_str(text)
             # Everything is RTL except aya numbers and other digits-only words.
-            if word[0] in ("\u06DD", "(") or word.isdigit():
+            if text[0] in ("\u06DD", "(") or text.isdigit():
                 self.buffer.direction = hb.HARFBUZZ.DIRECTION_LTR
             else:
                 self.buffer.direction = hb.HARFBUZZ.DIRECTION_RTL
@@ -234,14 +238,14 @@ class Shaper:
 
             hb.shape(self.font, self.buffer)
 
-            self.doc.word_cache[word] = self.buffer.get_glyphs()
+            self.doc.word_cache[text] = self.buffer.get_glyphs()
 
-        glyphs, pos = self.doc.word_cache[word]
+        glyphs, pos = self.doc.word_cache[text]
         box = Box(self.doc, pos.x, glyphs)
 
         # Flag boxes with “quarter” symbol, as it needs some special
         # handling later.
-        if ord(word[0]) - Q_PUA > 0:
+        if ord(word[0]) > Q_PUA:
             box.quarter = ord(word[0]) - Q_PUA
         if word.startswith(P_STR):
             box.prostration = True
