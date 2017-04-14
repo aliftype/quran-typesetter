@@ -142,10 +142,10 @@ class ObjectList(list):
     def is_feasible_breakpoint(self, i):
         "Return true if position 'i' is a feasible breakpoint."
 
-        box = self[i]
-        if box.is_penalty() and box.penalty < INFINITY:
+        node = self[i]
+        if node.is_penalty() and node.penalty < INFINITY:
             return True
-        elif i>0 and box.is_glue() and self[i-1].is_box():
+        elif i > 0 and node.is_glue() and self[i-1].is_box():
             return True
         else:
             return False
@@ -153,8 +153,8 @@ class ObjectList(list):
     def is_forced_break(self, i):
         "Return true if position 'i' is a forced breakpoint."
 
-        box = self[i]
-        if box.is_penalty() and box.penalty == -INFINITY:
+        node = self[i]
+        if node.is_penalty() and node.penalty == -INFINITY:
             return True
         else:
             return False
@@ -284,20 +284,20 @@ class ObjectList(list):
         m = len(self)
         if m == 0: return []            # No text, so no breaks
 
-        # Precompute lists containing the numeric values for each box.
+        # Precompute lists containing the numeric values for each node.
         # The variable names follow those in Knuth's description.
         w = [0]*m ;
         y = [0]*m ; z = [0]*m
         p = [0]*m ; f = [0]*m
         for i in range(m):
-            box = self[i]
-            w[i] = box.width
-            if box.is_glue():
-                y[i] = box.stretch
-                z[i] = box.shrink
-            elif box.is_penalty():
-                p[i] = box.penalty
-                f[i] = box.flagged
+            node = self[i]
+            w[i] = node.width
+            if node.is_glue():
+                y[i] = node.stretch
+                z[i] = node.shrink
+            elif node.is_penalty():
+                p[i] = node.penalty
+                f[i] = node.flagged
 
         # Precompute the running sums of width, stretch, and shrink
         # (W,Y,Z in the original paper).  These make it easy to measure the
@@ -312,10 +312,10 @@ class ObjectList(list):
             self.sum_stretch[i] = stretch_sum
             self.sum_shrink[i] = shrink_sum
 
-            box = self[i]
-            width_sum   = width_sum + box.width
-            stretch_sum = stretch_sum + box.stretch
-            shrink_sum  = shrink_sum + box.shrink
+            node = self[i]
+            width_sum   = width_sum + node.width
+            stretch_sum = stretch_sum + node.stretch
+            shrink_sum  = shrink_sum + node.shrink
 
         # Initialize list of active nodes to a single break at the
         # beginning of the text.
@@ -325,7 +325,7 @@ class ObjectList(list):
         active_nodes = [A]
 
         if self.debug:
-            print('Looping over %i box objects' % m)
+            print('Looping over %i node objects' % m)
 
         for i in range(m):
             B = self[i]
@@ -514,15 +514,15 @@ if __name__ == '__main__':
         r = L.compute_adjustment_ratio(line_start, breakpoint, line, line_lengths)
         line = line + 1
         for i in range(line_start, breakpoint):
-            box = L[i]
-            if box.is_glue():
+            node = L[i]
+            if node.is_glue():
                 if full_justify:
-                    width = int( box.compute_width(r) )
+                    width = int(node.compute_width(r))
                 else: width = 1
                 sys.stdout.write(' '*width)
 
-            elif hasattr(box, 'data'):
-                sys.stdout.write(box.data)
+            elif hasattr(node, 'data'):
+                sys.stdout.write(node.data)
 
         line_start = breakpoint + 1
         sys.stdout.write('\n')
