@@ -59,10 +59,10 @@ class Box:
         self.penalty = 0
         self.flagged = 0
 
-    def is_glue(self):         return 0
-    def is_box(self):          return 1
-    def is_penalty(self):      return 0
-    def is_forced_break(self): return 0
+    def is_glue(self):         return False
+    def is_box(self):          return True
+    def is_penalty(self):      return False
+    def is_forced_break(self): return False
 
 class Glue:
     """Class representing a bit of glue.  Glue has a preferred width,
@@ -81,10 +81,10 @@ class Glue:
         if r < 0: return self.width + r*self.shrink
         else:     return self.width + r*self.stretch
 
-    def is_glue(self):         return 1
-    def is_box(self):          return 0
-    def is_penalty(self):      return 0
-    def is_forced_break(self): return 0
+    def is_glue(self):         return True
+    def is_box(self):          return False
+    def is_penalty(self):      return False
+    def is_forced_break(self): return False
 
 class Penalty:
     """Class representing a penalty.  Negative penalty values
@@ -102,9 +102,9 @@ class Penalty:
         self.flagged = flagged
         self.stretch = self.shrink = 0
 
-    def is_glue(self):         return 0
-    def is_box(self):          return 0
-    def is_penalty(self):      return 1
+    def is_glue(self):         return False
+    def is_box(self):          return False
+    def is_penalty(self):      return True
     def is_forced_break(self):
         return (self.penalty == -INFINITY)
 
@@ -130,8 +130,8 @@ class ObjectList(list):
     Supports the same methods as regular Python lists.
     """
 
-    # Set this to 1 to trace the execution of the algorithm.
-    debug = 0
+    # Set this to True to trace the execution of the algorithm.
+    debug = False
 
     def add_closing_penalty (self):
         "Add the standard glue and penalty for the end of a paragraph"
@@ -144,20 +144,20 @@ class ObjectList(list):
 
         box = self[i]
         if box.is_penalty() and box.penalty < INFINITY:
-            return 1
+            return True
         elif i>0 and box.is_glue() and self[i-1].is_box():
-            return 1
+            return True
         else:
-            return 0
+            return False
 
     def is_forced_break(self, i):
         "Return true if position 'i' is a forced breakpoint."
 
         box = self[i]
         if box.is_penalty() and box.penalty == -INFINITY:
-            return 1
+            return True
         else:
-            return 0
+            return False
 
     def measure_width(self, pos1, pos2):
         "Add up the widths between positions 1 and 2"
@@ -481,7 +481,7 @@ if __name__ == '__main__':
     text = ' '.join(text.split())
 
     line_width = 100                    # Line width to use for formatting
-    full_justify = 0                    # Boolean; if true, do full justification
+    full_justify = False                # If True, do full justification
     # Turn chunk of text into an ObjectList.
     L = ObjectList()
     for ch in text:
