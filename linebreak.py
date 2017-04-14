@@ -286,9 +286,11 @@ class NodeList(list):
 
         # Precompute lists containing the numeric values for each node.
         # The variable names follow those in Knuth's description.
-        w = [0]*m ;
-        y = [0]*m ; z = [0]*m
-        p = [0]*m ; f = [0]*m
+        w = [0]*m
+        y = [0]*m
+        z = [0]*m
+        p = [0]*m
+        f = [0]*m
         for i in range(m):
             node = self[i]
             w[i] = node.width
@@ -304,8 +306,9 @@ class NodeList(list):
         # width/stretch/shrink between two indexes; just compute
         # sum_*[pos2] - sum_*[pos1].  Note that sum_*[i] is the total
         # up to but not including the box at position i.
-
-        self.sum_width = {} ; self.sum_stretch = {} ; self.sum_shrink = {}
+        self.sum_width = {}
+        self.sum_stretch = {}
+        self.sum_shrink = {}
         width_sum = stretch_sum = shrink_sum = 0
         for i in range(m):
             self.sum_width[i] = width_sum
@@ -325,7 +328,7 @@ class NodeList(list):
         active_nodes = [A]
 
         if self.debug:
-            print('Looping over %i node objects' % m)
+            print('Looping over %i nodes' % m)
 
         for i in range(m):
             B = self[i]
