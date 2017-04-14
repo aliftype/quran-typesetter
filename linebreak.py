@@ -339,7 +339,6 @@ class NodeList(list):
                      print('Feasible breakpoint at %i:' % i)
                      print('\tCurrent active node list:', active_nodes)
 
-                 if self.debug:
                      # Print the list of active nodes, sorting them
                      # so they can be visually checked for uniqueness.
                      def key_f(n):
