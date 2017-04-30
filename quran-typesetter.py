@@ -238,10 +238,10 @@ class Shaper:
 
             hb.shape(self.font, self.buffer)
 
-            self.doc.word_cache[text] = self.buffer.get_glyphs()
+            glyphs, pos = self.buffer.get_glyphs()
+            self.doc.word_cache[text] = Word(text, glyphs, pos.x)
 
-        glyphs, pos = self.doc.word_cache[text]
-        box = Box(self.doc, pos.x, glyphs)
+        box = Box(self.doc, self.doc.word_cache[text])
 
         # Flag boxes with “quarter” symbol, as it needs some special
         # handling later.
@@ -406,7 +406,7 @@ class Page:
             self.cr.save()
             self.cr.translate((x + offset, y))
             self.cr.scale((scale, scale))
-            self.cr.show_glyphs(box.data)
+            self.cr.show_glyphs(box.data.glyphs)
             self.cr.restore()
 
             y += leading
@@ -414,6 +414,14 @@ class Page:
     def strip(self):
         while not self.lines[-1].is_box():
             self.lines.pop()
+
+class Word:
+    """Class representing a shaped word."""
+
+    def __init__(self, text, glyphs, width):
+        self.text = text
+        self.glyphs = glyphs
+        self.width = width
 
 
 class LineList(linebreak.NodeList):
@@ -514,8 +522,8 @@ class Penalty(linebreak.Penalty):
 class Box(linebreak.Box):
     """Class representing a word."""
 
-    def __init__(self, doc, width, glyphs):
-        super().__init__(width, glyphs)
+    def __init__(self, doc, word):
+        super().__init__(word.width, word)
         self.doc = doc
         self.quarter = 0
         self.prostration = False
@@ -529,7 +537,7 @@ class Box(linebreak.Box):
     def draw(self, cr, pos, text_width=0):
         cr.save()
         cr.translate(pos)
-        cr.show_glyphs(self.data)
+        cr.show_glyphs(self.data.glyphs)
         cr.restore()
 
 
