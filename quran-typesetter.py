@@ -235,11 +235,11 @@ class Shaper:
                 self.buffer.direction = hb.HARFBUZZ.DIRECTION_RTL
             self.buffer.script = hb.HARFBUZZ.SCRIPT_ARABIC
             self.buffer.language = hb.Language.from_string("ar")
+            self.buffer.cluster_level = hb.HARFBUZZ.BUFFER_CLUSTER_LEVEL_MONOTONE_CHARACTERS
 
             hb.shape(self.font, self.buffer)
 
-            glyphs, pos = self.buffer.get_glyphs()
-            self.doc.word_cache[text] = Word(text, glyphs, pos.x)
+            self.doc.word_cache[text] = Word(text, self.buffer)
 
         box = Box(self.doc, self.doc.word_cache[text])
 
@@ -418,10 +418,43 @@ class Page:
 class Word:
     """Class representing a shaped word."""
 
-    def __init__(self, text, glyphs, width):
+    def __init__(self, text, buf):
         self.text = text
+
+        glyphs, pos = buf.get_glyphs()
         self.glyphs = glyphs
-        self.width = width
+        self.width = pos.x
+
+        if False:
+            # Do clusters per glyph/charcter, disabled for now as it does not
+            # seem to improve things that much.
+            self.backward = hb.HARFBUZZ.DIRECTION_IS_BACKWARD(buf.direction)
+            infos = buf.glyph_infos
+            if self.backward:
+                infos = infos[::-1]
+
+            clusters = []
+            i = 0
+            while i < len(infos):
+                info = infos[i]
+
+                n_glyphs = 1
+                i += 1
+                while (i < len(infos)) and (infos[i].cluster == info.cluster):
+                    i += 1
+                    n_glyphs += 1
+
+                if i < len(infos):
+                    next_cluster = infos[i].cluster
+                else:
+                    next_cluster = len(text)
+                n_chars = next_cluster - info.cluster
+
+                clusters.append((n_chars, n_glyphs))
+            self.clusters = clusters
+        else:
+            self.backward = False
+            self.clusters = [(len(text), len(glyphs))]
 
 
 class LineList(linebreak.NodeList):
@@ -537,7 +570,12 @@ class Box(linebreak.Box):
     def draw(self, cr, pos, text_width=0):
         cr.save()
         cr.translate(pos)
-        cr.show_glyphs(self.data.glyphs)
+        word = self.data
+        if word.backward:
+            flags = qh.CAIRO.TEXT_CLUSTER_FLAG_BACKWARD
+        else:
+            flags = 0
+        cr.show_text_glyphs(word.text, word.glyphs, word.clusters, flags)
         cr.restore()
 
 
