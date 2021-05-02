@@ -25,6 +25,7 @@
 # Boston, MA 02110-1301, USA
 #-
 
+import sys
 import ctypes as ct
 import array
 from weakref import \
@@ -42,7 +43,23 @@ except ImportError :
     qahirah = None
 #end try
 
-hb = ct.cdll.LoadLibrary("libharfbuzz.so.0")
+LIBNAME = \
+    {
+        "linux" :
+            {
+                "harfbuzz" : "libharfbuzz.so",
+            },
+        "openbsd6" :
+            {
+                "harfbuzz" : "libharfbuzz.so",
+            },
+        "darwin" :
+            {
+                "harfbuzz" : "libharfbuzz.dylib",
+            },
+    }[sys.platform]
+
+hb = ct.cdll.LoadLibrary(LIBNAME["harfbuzz"])
 
 class HARFBUZZ :
     "useful definitions adapted from harfbuzz/*.h. You will need to use the constants" \

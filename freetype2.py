@@ -31,6 +31,7 @@ interface to Pycairo, if installed:
 # or later, to be compatible with FreeType itself.
 #-
 
+import sys
 import math
 from numbers import \
     Real
@@ -44,9 +45,31 @@ except ImportError :
     cairo = None
 #end try
 
-ft = ct.cdll.LoadLibrary("libfreetype.so.6")
+LIBNAME = \
+    {
+        "linux" :
+            {
+                "c" : "libc.so.6",
+                "freetype" : "libfreetype.so.6",
+                "fontconfig" : "libfontconfig.so.1",
+            },
+        "openbsd6" :
+            {
+                "c" : "libc.so.6",
+                "freetype" : "libfreetype.so.28",
+                "fontconfig" : "libfontconfig.so.11",
+            },
+        "darwin" :
+            {
+                "c" : "libc.dylib",
+                "freetype" : "libfreetype.6.dylib",
+                "fontconfig" : "libfontconfig.1.dylib",
+            },
+    }[sys.platform]
+
+ft = ct.cdll.LoadLibrary(LIBNAME["freetype"])
 try :
-    fc = ct.cdll.LoadLibrary("libfontconfig.so.1")
+    fc = ct.cdll.LoadLibrary(LIBNAME["fontconfig"])
 except OSError as fail :
     if True : # if fail.errno == 2 : # ENOENT
       # no point checking, because it is None! (Bug?)
@@ -55,7 +78,7 @@ except OSError as fail :
         raise
     #end if
 #end try
-libc = ct.cdll.LoadLibrary("libc.so.6")
+libc = ct.cdll.LoadLibrary(LIBNAME["c"])
 
 def struct_to_dict(item, itemtype, indirect, extra_decode = None) :
     "decodes the elements of a ctypes Structure into a dict. extra_decode" \
