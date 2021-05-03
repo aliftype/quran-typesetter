@@ -44,12 +44,12 @@ class Document:
         self.word_cache = {}
         self.shaper = Shaper(self)
 
-        surface = qh.PDFSurface.create(filename, (self.page_width,
-                                                  self.page_height))
+        self.surface = qh.PDFSurface.create(filename, (self.page_width,
+                                                       self.page_height))
         # Create a new FreeType face for Cairo, as sometimes Cairo mangles the
         # char size, breaking HarfBuzz positions when it uses the same face.
         ft_face = ft.find_face(self.body_font)
-        cr = self.cr = qh.Context.create(surface)
+        cr = self.cr = qh.Context.create(self.surface)
         cr.set_font_face(qh.FontFace.create_for_ft_face(ft_face))
         cr.set_font_size(self.body_font_size)
         cr.set_source_colour(qh.Colour.grey(0))
@@ -94,6 +94,9 @@ class Document:
         logger.info("Drawing pages…")
         for page in pages:
             page.draw(self.cr)
+
+        del self.cr
+        del self.surface
 
     def _create_lines(self):
         """Processes each chapter and creates lines for the whole document."""
