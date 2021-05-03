@@ -10,14 +10,15 @@ and Context.set_line_width() calls, there is a Context.line_width property
 that may be read and written.
 """
 #+
-# Copyright 2015-2017 Lawrence D'Oliveiro <ldo@geek-central.gen.nz>.
+# Copyright 2015-2020 Lawrence D'Oliveiro <ldo@geek-central.gen.nz>.
 # Licensed under the GNU Lesser General Public License v2.1 or later.
 #-
 
 import sys
 import math
 from numbers import \
-    Real
+    Real, \
+    Complex
 from collections import \
     namedtuple
 import io
@@ -25,7 +26,9 @@ import colorsys
 import array
 import ctypes as ct
 from weakref import \
+    WeakKeyDictionary, \
     WeakValueDictionary
+import atexit
 try :
     import fontconfig
       # my Fontconfig wrapper, get from <https://github.com/ldo/python_fontconfig>
@@ -137,8 +140,12 @@ class CAIRO :
     STATUS_INVALID_MESH_CONSTRUCTION = 36
     STATUS_DEVICE_FINISHED = 37
     STATUS_JBIG2_GLOBAL_MISSING = 38
+    STATUS_PNG_ERROR = 39
+    STATUS_FREETYPE_ERROR = 40
+    STATUS_WIN32_GDI_ERROR = 41
+    STATUS_TAG_ERROR = 42
 
-    STATUS_LAST_STATUS = 39
+    STATUS_LAST_STATUS = 43
 
     # codes for cairo_surface_type_t
     SURFACE_TYPE_IMAGE = 0
@@ -378,6 +385,10 @@ class CAIRO :
     REGION_OVERLAP_OUT = 1
     REGION_OVERLAP_PART = 2
 
+    # since 1.16, for tag_begin/end
+    TAG_DEST = "cairo.dest"
+    TAG_LINK = "Link"
+
     class glyph_t(ct.Structure) :
         _fields_ = \
             [
@@ -455,9 +466,27 @@ class CAIRO :
     read_func_t = ct.CFUNCTYPE(ct.c_int, ct.c_void_p, ct.c_void_p, ct.c_uint)
     write_func_t = ct.CFUNCTYPE(ct.c_int, ct.c_void_p, ct.c_void_p, ct.c_uint)
 
+    cairo_pdf_version_t = ct.c_uint
     # codes for cairo_pdf_version_t
     PDF_VERSION_1_4 = 0
     PDF_VERSION_1_5 = 1
+
+    pdf_outline_flags_t = ct.c_uint # since 1.16
+    # flags for pdf_outline_flags_t
+    PDF_OUTLINE_FLAG_OPEN = 0x1
+    PDF_OUTLINE_FLAG_BOLD = 0x2
+    PDF_OUTLINE_FLAG_ITALIC = 0x4
+
+    PDF_OUTLINE_ROOT = 0
+
+    pdf_metadata_t = ct.c_uint # since 1.16
+    PDF_METADATA_TITLE = 0
+    PDF_METADATA_AUTHOR = 1
+    PDF_METADATA_SUBJECT = 2
+    PDF_METADATA_KEYWORDS = 3
+    PDF_METADATA_CREATOR = 4
+    PDF_METADATA_CREATE_DATE = 5
+    PDF_METADATA_MOD_DATE = 6
 
     # cairo_ps_level_t
     PS_LEVEL_2 = 0
@@ -466,6 +495,19 @@ class CAIRO :
     # codes for cairo_svg_version_t
     SVG_VERSION_1_1 = 0
     SVG_VERSION_1_2 = 1
+
+    svg_unit_t = ct.c_uint # since 1.16
+    # values for svg_unit_t
+    SVG_UNIT_USER = 0
+    SVG_UNIT_EM = 1
+    SVG_UNIT_EX = 2
+    SVG_UNIT_PX = 3
+    SVG_UNIT_IN = 4
+    SVG_UNIT_CM = 5
+    SVG_UNIT_MM = 6
+    SVG_UNIT_PT = 7
+    SVG_UNIT_PC = 8
+    SVG_UNIT_PERCENT = 9
 
     # codes for cairo_device_type_t
     DEVICE_TYPE_DRM = 0
@@ -582,6 +624,56 @@ class XCB :
 
 #end XCB
 
+class XLIB :
+    "minimal needed Xlib-related definitions."
+
+    XID = ct.c_uint
+    Colormap = XID
+    Drawable = XID
+    PictFormat = XID
+
+    # values for PictFormat
+    PictFormatID = (1 << 0)
+    PictFormatType = (1 << 1)
+    PictFormatDepth = (1 << 2)
+    PictFormatRed = (1 << 3)
+    PictFormatRedMask = (1 << 4)
+    PictFormatGreen = (1 << 5)
+    PictFormatGreenMask = (1 << 6)
+    PictFormatBlue = (1 << 7)
+    PictFormatBlueMask = (1 << 8)
+    PictFormatAlpha = (1 << 9)
+    PictFormatAlphaMask = (1 << 10)
+    PictFormatColormap = (1 << 11)
+
+    class XRenderDirectFormat(ct.Structure) :
+        _fields_ = \
+            [
+                ("red", ct.c_ushort),
+                ("redMask", ct.c_ushort),
+                ("green", ct.c_ushort),
+                ("greenMask", ct.c_ushort),
+                ("blue", ct.c_ushort),
+                ("blueMask", ct.c_ushort),
+                ("alpha", ct.c_ushort),
+                ("alphaMask", ct.c_ushort),
+            ]
+    #end XRenderDirectFormat
+
+    class XRenderPictFormat(ct.Structure) :
+        pass
+    #end XRenderPictFormat
+    XRenderPictFormat._fields_ = \
+        [
+            ("id", PictFormat),
+            ("type", ct.c_int),
+            ("depth", ct.c_int),
+            ("direct", XRenderDirectFormat),
+            ("colormap", Colormap),
+        ]
+
+#end XLIB
+
 class HAS :
     "functionality queries. These are implemented by checking for the presence" \
     " of particular library functions."
@@ -605,6 +697,8 @@ in \
         ("USER_FONT", "user_font_face_create"),
         ("XCB_SURFACE", "xcb_surface_create"),
         ("XCB_SHM_FUNCTIONS", "xcb_device_debug_cap_xshm_version"),
+        ("XLIB_SURFACE", "xlib_surface_create"),
+        ("XLIB_XRENDER", "xlib_surface_create_with_xrender_format"),
     ) \
 :
     setattr \
@@ -800,6 +894,12 @@ cairo.cairo_in_clip.argtypes = (ct.c_void_p, ct.c_double, ct.c_double)
 cairo.cairo_copy_clip_rectangle_list.restype = CAIRO.rectangle_list_ptr_t
 cairo.cairo_copy_clip_rectangle_list.argtypes = (ct.c_void_p,)
 cairo.cairo_rectangle_list_destroy.argtypes = (CAIRO.rectangle_list_ptr_t,)
+if hasattr(cairo, "cairo_tag_begin") : # since 1.16
+    cairo.cairo_tag_begin.restype = None
+    cairo.cairo_tag_begin.argtypes = (ct.c_void_p, ct.c_char_p, ct.c_char_p)
+    cairo.cairo_tag_end.restype = None
+    cairo.cairo_tag_end.argtypes = (ct.c_void_p, ct.c_char_p)
+#end if
 cairo.cairo_reset_clip.argtypes = (ct.c_void_p,)
 cairo.cairo_fill.argtypes = (ct.c_void_p,)
 cairo.cairo_fill_preserve.argtypes = (ct.c_void_p,)
@@ -925,6 +1025,16 @@ cairo.cairo_pdf_get_versions.argtypes = (ct.c_void_p, ct.c_void_p)
 cairo.cairo_pdf_version_to_string.restype = ct.c_char_p
 cairo.cairo_pdf_version_to_string.argtypes = (ct.c_int,)
 cairo.cairo_pdf_surface_set_size.argtypes = (ct.c_void_p, ct.c_double, ct.c_double)
+if hasattr(cairo, "cairo_pdf_surface_add_outline") : # since 1.16
+    cairo.cairo_pdf_surface_add_outline.restype = ct.c_int
+    cairo.cairo_pdf_surface_add_outline.argtypes = (ct.c_void_p, ct.c_int, ct.c_char_p, ct.c_char_p, CAIRO.pdf_outline_flags_t)
+    cairo.cairo_pdf_surface_set_metadata.restype = None
+    cairo.cairo_pdf_surface_set_metadata.argtypes = (ct.c_void_p, CAIRO.pdf_metadata_t, ct.c_char_p)
+    cairo.cairo_pdf_surface_set_page_label.restype = None
+    cairo.cairo_pdf_surface_set_page_label.argtypes = (ct.c_void_p, ct.c_char_p)
+    cairo.cairo_pdf_surface_set_thumbnail_size.restype = None
+    cairo.cairo_pdf_surface_set_thumbnail_size.argtypes = (ct.c_void_p, ct.c_int, ct.c_int)
+#end if
 cairo.cairo_ps_surface_create.restype = ct.c_void_p
 cairo.cairo_ps_surface_create.argtypes = (ct.c_char_p, ct.c_double, ct.c_double)
 cairo.cairo_ps_surface_create_for_stream.restype = ct.c_void_p
@@ -948,6 +1058,12 @@ cairo.cairo_svg_surface_restrict_to_version.argtypes = (ct.c_void_p, ct.c_int)
 cairo.cairo_svg_get_versions.argtypes = (ct.c_void_p, ct.c_void_p)
 cairo.cairo_svg_version_to_string.restype = ct.c_char_p
 cairo.cairo_svg_version_to_string.argtypes = (ct.c_int,)
+if hasattr(cairo, "cairo_svg_surface_set_document_unit") : # since 1.16
+    cairo.cairo_svg_surface_set_document_unit.restype = None
+    cairo.cairo_svg_surface_set_document_unit.argtypes = (ct.c_void_p, CAIRO.svg_unit_t)
+    cairo.cairo_svg_surface_get_document_unit.restype = CAIRO.svg_unit_t
+    cairo.cairo_svg_surface_get_document_unit.argtypes = (ct.c_void_p,)
+#end if
 cairo.cairo_recording_surface_create.restype = ct.c_void_p
 cairo.cairo_recording_surface_create.argtypes = (ct.c_int, ct.c_void_p)
 cairo.cairo_recording_surface_ink_extents.argtypes = (ct.c_void_p, ct.c_void_p, ct.c_void_p, ct.c_void_p, ct.c_void_p)
@@ -1095,6 +1211,12 @@ cairo.cairo_font_options_get_hint_style.argtypes = (ct.c_void_p,)
 cairo.cairo_font_options_set_hint_style.argtypes = (ct.c_void_p, ct.c_int)
 cairo.cairo_font_options_get_hint_metrics.argtypes = (ct.c_void_p,)
 cairo.cairo_font_options_set_hint_metrics.argtypes = (ct.c_void_p, ct.c_int)
+if hasattr(cairo, "cairo_font_options_get_variations") : # since 1.16
+    cairo.cairo_font_options_get_variations.restype = ct.c_char_p
+    cairo.cairo_font_options_get_variations.argtypes = (ct.c_void_p,)
+    cairo.cairo_font_options_set_variations.restype = None
+    cairo.cairo_font_options_set_variations.argtypes = (ct.c_void_p, ct.c_char_p)
+#end if
 
 cairo.cairo_font_face_reference.restype = ct.c_void_p
 cairo.cairo_font_face_reference.argtypes = (ct.c_void_p,)
@@ -1174,6 +1296,49 @@ if HAS.XCB_SURFACE :
     cairo.cairo_xcb_device_debug_set_precision.argtypes = (ct.c_void_p, ct.c_int)
     cairo.cairo_xcb_device_debug_get_precision.restype = ct.c_int
     cairo.cairo_xcb_device_debug_get_precision.argtypes = (ct.c_void_p,)
+
+#end if
+
+if HAS.XLIB_SURFACE :
+
+    cairo.cairo_xlib_surface_create.restype = ct.c_void_p
+    cairo.cairo_xlib_surface_create.argtypes = (ct.c_void_p, XLIB.Drawable, ct.c_void_p, ct.c_int, ct.c_int)
+    cairo.cairo_xlib_surface_create_for_bitmap.restype = ct.c_void_p
+    cairo.cairo_xlib_surface_create_for_bitmap.argtypes = (ct.c_void_p, XLIB.Drawable, ct.c_void_p, ct.c_int, ct.c_int)
+    cairo.cairo_xlib_surface_set_size.restype = None
+    cairo.cairo_xlib_surface_set_size.argtypes = (ct.c_void_p, ct.c_int, ct.c_int)
+    cairo.cairo_xlib_surface_set_drawable.restype = None
+    cairo.cairo_xlib_surface_set_drawable.argtypes = (ct.c_void_p, XLIB.Drawable, ct.c_int, ct.c_int)
+    cairo.cairo_xlib_surface_get_display.restype = ct.c_void_p
+    cairo.cairo_xlib_surface_get_display.argtypes = (ct.c_void_p,)
+    cairo.cairo_xlib_surface_get_drawable.restype = ct.c_void_p
+    cairo.cairo_xlib_surface_get_drawable.argtypes = (ct.c_void_p,)
+    cairo.cairo_xlib_surface_get_screen.restype = ct.c_void_p
+    cairo.cairo_xlib_surface_get_screen.argtypes = (ct.c_void_p,)
+    cairo.cairo_xlib_surface_get_visual.restype = ct.c_void_p
+    cairo.cairo_xlib_surface_get_visual.argtypes = (ct.c_void_p,)
+    cairo.cairo_xlib_surface_get_depth.restype = ct.c_int
+    cairo.cairo_xlib_surface_get_depth.argtypes = (ct.c_void_p,)
+    cairo.cairo_xlib_surface_get_width.restype = ct.c_int
+    cairo.cairo_xlib_surface_get_width.argtypes = (ct.c_void_p,)
+    cairo.cairo_xlib_surface_get_height.restype = ct.c_int
+    cairo.cairo_xlib_surface_get_height.argtypes = (ct.c_void_p,)
+
+    cairo.cairo_xlib_device_debug_cap_xrender_version.restype = None
+    cairo.cairo_xlib_device_debug_cap_xrender_version.argtypes = (ct.c_void_p, ct.c_int, ct.c_int)
+    cairo.cairo_xlib_device_debug_set_precision.restype = None
+    cairo.cairo_xlib_device_debug_set_precision.argtypes = (ct.c_void_p, ct.c_int)
+    cairo.cairo_xlib_device_debug_get_precision.restype = ct.c_int
+    cairo.cairo_xlib_device_debug_get_precision.argtypes = (ct.c_void_p,)
+
+    if HAS.XLIB_XRENDER :
+
+        cairo.cairo_xlib_surface_create_with_xrender_format.restype = ct.c_void_p
+        cairo.cairo_xlib_surface_create_with_xrender_format.argtypes = (ct.c_void_p, XLIB.Drawable, ct.c_void_p, ct.c_void_p, ct.c_int, ct.c_int)
+        cairo.cairo_xlib_surface_get_xrender_format.restype = ct.c_void_p
+        cairo.cairo_xlib_surface_get_xrender_format.argtypes = (ct.c_void_p,)
+
+    #end if
 
 #end if
 
@@ -1386,6 +1551,17 @@ class Vector :
             v
     #end from_tuple
 
+    @classmethod
+    def from_complex(celf, x) :
+        return \
+            celf(x.real, x.imag)
+    #end from_complex
+
+    def to_complex(self) :
+        return \
+            complex(self.x, self.y)
+    #end to_complex
+
     def isint(self) :
         "are the components signed 32-bit integers."
         return \
@@ -1477,6 +1653,8 @@ class Vector :
             result = type(v)(v.x * f.x, v.y * f.y)
         elif isinstance(f, Real) :
             result = type(v)(v.x * f, v.y * f)
+        elif isinstance(f, Complex) :
+            result = type(v).from_complex(v.to_complex() * f)
         else :
             result = NotImplemented
         #end if
@@ -1491,6 +1669,8 @@ class Vector :
             result = type(v)(v.x / f.x, v.y / f.y)
         elif isinstance(f, Real) :
             result = type(v)(v.x / f, v.y / f)
+        elif isinstance(f, Complex) :
+            result = type(v).from_complex(v.to_complex() / f)
         else :
             result = NotImplemented
         #end if
@@ -1520,6 +1700,8 @@ class Vector :
             result = type(v)(v.x % f.x, v.y % f.y)
         elif isinstance(f, Real) :
             result = type(v)(v.x % f, v.y % f)
+        elif isinstance(f, Complex) :
+            result = type(v).from_complex(v.to_complex() % f)
         else :
             result = NotImplemented
         #end if
@@ -1694,6 +1876,7 @@ class Matrix :
         return \
             result
     #end __mul__
+    __matmul__ = __mul__ # allow v1 @ v2 for dot product (Python 3.5 and later)
 
     def __pow__(m, p) :
         "raising of a Matrix to an integer power p is equivalent to applying" \
@@ -1833,8 +2016,12 @@ class Matrix :
     def mapiter(self, pts) :
         "maps an iterable of Vectors through the Matrix."
         pts = iter(pts)
-        while True : # until pts raises StopIteration
-            yield self.map(next(pts))
+        while True :
+            try :
+                yield self.map(next(pts))
+            except StopIteration :
+                break
+            #end try
         #end while
     #end mapiter
 
@@ -1842,8 +2029,12 @@ class Matrix :
         "maps an iterable of Vectors through the Matrix, ignoring the" \
         " translation part."
         pts = iter(pts)
-        while True : # until pts raises StopIteration
-            yield self.mapdelta(next(pts))
+        while True :
+            try :
+                yield self.mapdelta(next(pts))
+            except StopIteration :
+                break
+            #end try
         #end while
     #end mapdeltaiter
 
@@ -2080,8 +2271,8 @@ class Rect :
     #end __mul__
     __rmul__ = __mul__
 
-    def __div__(self, f) :
-        "invserse-scale a Rect uniformly by a number or non-uniformly by a Vector."
+    def __truediv__(self, f) :
+        "inverse-scale a Rect uniformly by a number or non-uniformly by a Vector."
         if isinstance(f, Vector) :
             result = type(self)(self.left / f.x, self.top / f.y, self.width / f.x, self.height / f.y)
         elif isinstance(f, Real) :
@@ -2091,7 +2282,23 @@ class Rect :
         #end if
         return \
             result
-    #end __div__
+    #end __truediv__
+
+    def __floordiv__(self, f) :
+        "inverse-scale an integer Rect uniformly by an integer or non-uniformly" \
+        " by an integer Vector."
+        self.assert_isint()
+        if isinstance(f, Vector) :
+            f.assert_isint()
+            result = type(self)(self.left // f.x, self.top // f.y, self.width // f.x, self.height // f.y)
+        elif isinstance(f, int) :
+            result = type(self)(self.left // f, self.top // f, self.width // f, self.height // f)
+        else :
+            result = NotImplemented
+        #end if
+        return \
+            result
+    #end __floordiv__
 
     def __eq__(r1, r2) :
         "equality of two rectangles."
@@ -2325,8 +2532,13 @@ class Glyph :
     def __init__(self, index, pos) :
         pos = Vector.from_tuple(pos)
         self.index = index
-        self.pos = pos
+        self.pos = Vector.from_tuple(pos)
     #end __init__
+
+    def __eq__(g1, g2) :
+        return \
+            g1.index == g2.index and g1.pos == g2.pos
+    #end __eq__
 
     def __repr__(self) :
         return \
@@ -2374,6 +2586,12 @@ default_tolerance = 0.1 # for flattening paths
 # I do this by maintaining a WeakValueDictionary in each of the relevant
 # (base) classes, which is updated by the constructors.
 #-
+
+_dependent_src = WeakKeyDictionary()
+_dependent_target = WeakKeyDictionary()
+  # for propagating dependencies on Python objects that must not go
+  # away even if caller forgets them, as long as depending object exists.
+  # Currently this is just array.array objects used to hold ImageSurface pixels.
 
 class UserDataDict(dict) :
     "a subclass of dict that allows weakrefs."
@@ -2428,8 +2646,12 @@ class Context :
         if not isinstance(surface, Surface) :
             raise TypeError("surface must be a Surface")
         #end if
+        result = celf(cairo.cairo_create(surface._cairobj))
+          # might raise exception on _check() call
+        _dependent_target[result] = _dependent_src.get(surface)
+          # to ensure any storage attached to it doesn't go away prematurely
         return \
-            celf(cairo.cairo_create(surface._cairobj))
+            result
     #end create
 
     @classmethod
@@ -2536,6 +2758,8 @@ class Context :
         #end if
         cairo.cairo_set_source(self._cairobj, source._cairobj)
         self._check()
+        _dependent_src[self] = _dependent_src.get(source)
+          # to ensure any storage attached to it doesn't go away prematurely
         return \
             self
     #end set_source
@@ -2559,6 +2783,7 @@ class Context :
         " more convenient to assign to the source_colour property."
         cairo.cairo_set_source_rgba(*((self._cairobj,) + tuple(Colour.from_rgba(c))))
         self._check()
+        _dependent_src[self] = None # remove dependency on any previous source
         return \
             self
     #end set_source_colour
@@ -2571,6 +2796,8 @@ class Context :
         x, y = Vector.from_tuple(origin)
         cairo.cairo_set_source_surface(self._cairobj, surface._cairobj, x, y)
         self._check()
+        _dependent_src[self] = _dependent_src.get(surface)
+          # to ensure any storage attached to it doesn't go away prematurely
         return \
             self
     #end set_source_surface
@@ -3049,8 +3276,10 @@ class Context :
     def circle(self, centre, radius) :
         "extremely common case of arc forming a full circle."
         centre = Vector.from_tuple(centre)
+        cairo.cairo_new_sub_path(self._cairobj)
         cairo.cairo_arc(self._cairobj, centre.x, centre.y, radius, 0, circle)
         cairo.cairo_close_path(self._cairobj)
+        cairo.cairo_new_sub_path(self._cairobj)
         return \
             self
     #end circle
@@ -3102,7 +3331,8 @@ class Context :
 
     def text_path(self, text) :
         "adds text outlines to the current path."
-        cairo.cairo_text_path(self._cairobj, text.encode("utf-8"))
+        c_text = text.encode()
+        cairo.cairo_text_path(self._cairobj, c_text)
         return \
             self
     #end text_path
@@ -3265,12 +3495,28 @@ class Context :
             Vector(x.value, y.value)
     #end device_to_user_distance
 
+    if hasattr(cairo, "cairo_tag_begin") : # since 1.16
+
+        def tag_begin(self, tag_name, attributes) :
+            c_tag_name = tag_name.encode()
+            c_attributes = attributes.encode()
+            cairo.cairo_tag_begin(self._cairobj, c_tag_name, c_attributes)
+        #end tag_begin
+
+        def tag_end(self, tag_name) :
+            c_tag_name = tag_name.encode()
+            cairo.cairo_tag_end(self._cairobj, c_tag_name)
+        #end tag_end
+
+    #end if
+
     # Text <http://cairographics.org/manual/cairo-text.html>
     # (except toy_font_face stuff, which goes in FontFace)
 
     def select_font_face(self, family, slant, weight) :
         "toy selection of a font face."
-        cairo.cairo_select_font_face(self._cairobj, family.encode("utf-8"), slant, weight)
+        c_family = family.encode()
+        cairo.cairo_select_font_face(self._cairobj, c_family, slant, weight)
         return \
             self
     #end select_font_face
@@ -3381,7 +3627,8 @@ class Context :
 
     def show_text(self, text) :
         "renders the specified text starting at the current point."
-        cairo.cairo_show_text(self._cairobj, text.encode("utf-8"))
+        c_text = text.encode()
+        cairo.cairo_show_text(self._cairobj, c_text)
         return \
             self
     #end show_text
@@ -3414,7 +3661,7 @@ class Context :
                 next_pos = pos + c[0]
                 e_clusters.append \
                   (
-                    (len(text[pos:next_pos].encode("utf-8")), c[1])
+                    (len(text[pos:next_pos].encode()), c[1])
                   )
                 pos = next_pos
             #end for
@@ -3445,7 +3692,8 @@ class Context :
         "returns a TextExtents object giving information about drawing the" \
         " specified text at the current font settings."
         result = CAIRO.text_extents_t()
-        cairo.cairo_text_extents(self._cairobj, text.encode("utf-8"), ct.byref(result))
+        c_text = text.encode()
+        cairo.cairo_text_extents(self._cairobj, c_text, ct.byref(result))
         return \
             TextExtents.from_cairo(result)
     #end text_extents
@@ -3721,7 +3969,8 @@ class Surface :
     #end show_page
 
     def write_to_png(self, filename) :
-        check(cairo.cairo_surface_write_to_png(self._cairobj, filename.encode("utf-8")))
+        c_filename = filename.encode()
+        check(cairo.cairo_surface_write_to_png(self._cairobj, c_filename))
         return \
             self
     #end write_to_png
@@ -3767,7 +4016,7 @@ class ImageSurface(Surface) :
     "A Cairo image surface. Do not instantiate directly; instead," \
     " call one of the create methods."
 
-    __slots__ = ("_arr",) # to forestall typos
+    __slots__ = () # to forestall typos
 
     max_dimensions = Vector(32767, 32767) # largest image Cairo will let me create
 
@@ -3790,8 +4039,9 @@ class ImageSurface(Surface) :
     @classmethod
     def create_from_png(celf, filename) :
         "loads an image from a PNG file and creates an ImageSurface for it."
+        c_filename = filename.encode()
         return \
-            celf(cairo.cairo_image_surface_create_from_png(filename.encode("utf-8")))
+            celf(cairo.cairo_image_surface_create_from_png(c_filename))
     #end create_from_png
 
     @classmethod
@@ -3841,19 +4091,13 @@ class ImageSurface(Surface) :
     @classmethod
     def create_for_array(celf, arr, format, dimensions, stride) :
         "calls cairo_image_surface_create_for_data on arr, which must be" \
-        " a Python array.array object.\n" \
-        "\n" \
-        "WARNING: you must keep a reference to the array object for as long" \
-        " as this Cairo surface exists. Otherwise, Cairo could cause segfaults" \
-        " trying to access the array memory after it has gone away."
-        # Actually, keeping a reference to this ImageSurface object would be
-        # sufficient (see below).
+        " a Python array.array object."
         width, height = Vector.from_tuple(dimensions)
         address, length = arr.buffer_info()
         assert height * stride <= length * arr.itemsize
         result = celf(cairo.cairo_image_surface_create_for_data(ct.c_void_p(address), format, width, height, stride))
-        result._arr = arr
-          # try to ensure it doesn't go away prematurely, as long as this
+        _dependent_src[result] = arr
+          # to ensure it doesn't go away prematurely, as long as this
           # ImageSurface object exists.
         return \
             result
@@ -3939,8 +4183,9 @@ class PDFSurface(Surface) :
         "creates a PDF surface that outputs to the specified file, with the dimensions" \
         " of each page given by the Vector dimensions_in_points."
         dimensions_in_points = Vector.from_tuple(dimensions_in_points)
+        c_filename = filename.encode()
         return \
-            celf(cairo.cairo_pdf_surface_create(filename.encode("utf-8"), dimensions_in_points.x, dimensions_in_points.y))
+            celf(cairo.cairo_pdf_surface_create(c_filename, dimensions_in_points.x, dimensions_in_points.y))
     #end create
 
     @classmethod
@@ -4026,6 +4271,39 @@ class PDFSurface(Surface) :
             self
     #end set_size
 
+    if hasattr(cairo, "cairo_pdf_surface_add_outline") : # since 1.16
+
+        def add_outline(self, parent_id, text, link_attribs, flags) :
+            c_text = text.encode()
+            c_link_attribs = link_attribs.encode()
+            return \
+                cairo.cairo_pdf_surface_add_outline \
+                  (
+                    self._cairobj,
+                    parent_id,
+                    c_text,
+                    c_link_attribs,
+                    flags
+                  )
+        #end add_outline
+
+        def set_metadata(self, metadata, text) :
+            c_text = text.encode()
+            cairo.cairo_pdf_surface_set_metadata(self._cairobj, metadata, c_text)
+        #end set_metadata
+
+        def set_page_label(self, text) :
+            c_text = text.encode()
+            cairo.cairo_pdf_surface_set_page_label(self._cairobj, c_text)
+        #end set_page_label
+
+        def set_thumbnail_size(self, dimensions) :
+            width, height = Vector.from_tuple(dimensions)
+            cairo.cairo_pdf_surface_set_thumbnail_size(self._cairobj, width, height)
+        #end set_thumbnail_size
+
+    #end if
+
 #end PDFSurface
 
 class PSSurface(Surface) :
@@ -4039,8 +4317,9 @@ class PSSurface(Surface) :
         "creates a PostScript surface that outputs to the specified file, with the dimensions" \
         " of each page given by the Vector dimensions_in_points."
         dimensions_in_points = Vector.from_tuple(dimensions_in_points)
+        c_filename = filename.encode()
         return \
-            celf(cairo.cairo_ps_surface_create(filename.encode("utf-8"), dimensions_in_points.x, dimensions_in_points.y))
+            celf(cairo.cairo_ps_surface_create(c_filename, dimensions_in_points.x, dimensions_in_points.y))
     #end create
 
     @classmethod
@@ -4166,7 +4445,8 @@ class PSSurface(Surface) :
 
     def dsc_comment(self, comment) :
         "emits a DSC comment."
-        cairo.cairo_ps_surface_dsc_comment(self._cairobj, comment.encode("utf-8"))
+        c_comment = comment.encode()
+        cairo.cairo_ps_surface_dsc_comment(self._cairobj, c_comment)
         self._check()
         return \
             self
@@ -4233,8 +4513,9 @@ class SVGSurface(Surface) :
         "creates an SVG surface that outputs to the specified file, with the dimensions" \
         " of each page given by the Vector dimensions_in_points."
         dimensions_in_points = Vector.from_tuple(dimensions_in_points)
+        c_filename = filename.encode()
         return \
-            celf(cairo.cairo_svg_surface_create(filename.encode("utf-8"), dimensions_in_points.x, dimensions_in_points.y))
+            celf(cairo.cairo_svg_surface_create(c_filename, dimensions_in_points.x, dimensions_in_points.y))
     #end create
 
     @classmethod
@@ -4309,6 +4590,25 @@ class SVGSurface(Surface) :
         return \
             result
     #end version_to_string
+
+    if hasattr(cairo, "cairo_svg_surface_set_document_unit") : # since 1.16
+
+        @property
+        def document_unit(self) :
+            return \
+                cairo.cairo_svg_surface_get_document_unit(self._cairobj)
+        #end document_unit
+
+        @document_unit.setter
+        def document_unit(self, unit) :
+            self.set_document_unit(unit)
+        #end document_unit
+
+        def set_document_unit(self, unit) :
+            cairo.cairo_svg_surface_set_document_unit(self._cairobj, unit)
+        #end set_document_unit
+
+    #end if
 
 #end SVGSurface
 
@@ -4427,6 +4727,30 @@ class Device :
 
     #end if
 
+    if HAS.XLIB_SURFACE :
+        # debug interface
+
+        def xlib_debug_cap_xrender_version(self, major_version, minor_version) :
+            cairo.cairo_xcb_device_debug_cap_xrender_version(self._cairobj, major_version, minor_version)
+        #end xlib_debug_cap_xrender_version
+
+        @property
+        def xlib_debug_precision(self) :
+            "-1 means choose automatically based on anti-aliasing mode."
+            result = cairo.cairo_xlib_device_debug_get_precision(self._cairobj)
+            self._check()
+            return \
+                result
+        #end xlib_debug_precision
+
+        @xlib_debug_precision.setter
+        def xlib_debug_precision(self, precision) :
+            cairo.cairo_xlib_device_debug_set_precision(self._cairobj, precision)
+            self._check()
+        #end xlib_debug_precision
+
+    #end if
+
 #end Device
 
 class ScriptDevice(Device) :
@@ -4438,8 +4762,9 @@ class ScriptDevice(Device) :
     @classmethod
     def create(celf, filename) :
         "creates a ScriptDevice that outputs to the specified file."
+        c_filename = filename.encode()
         return \
-            celf(cairo.cairo_script_create(filename.encode("utf-8")))
+            celf(cairo.cairo_script_create(c_filename))
     #end create
 
     @classmethod
@@ -4508,8 +4833,11 @@ class ScriptDevice(Device) :
         if not isinstance(target, Surface) :
             raise TypeError("target must be a Surface")
         #end if
+        result = Surface(cairo.cairo_script_surface_create_for_target(self._cairobj, target._cairobj))
+        _dependent_src[result] = _dependent_src.get(target)
+          # to ensure any storage attached to it doesn't go away prematurely
         return \
-            Surface(cairo.cairo_script_surface_create_for_target(self._cairobj, target._cairobj))
+            result
     #end surface_create_for_target
 
     def write_comment(self, comment) :
@@ -4947,7 +5275,7 @@ class Pattern :
     "a Cairo Pattern object. Do not instantiate directly; use one of the create methods."
     # <http://cairographics.org/manual/cairo-cairo-pattern-t.html>
 
-    __slots__ = ("_cairobj", "_user_data", "_surface", "__weakref__") # to forestall typos
+    __slots__ = ("_cairobj", "_user_data", "__weakref__") # to forestall typos
 
     _instances = WeakValueDictionary()
     _ud_refs = WeakValueDictionary()
@@ -5052,7 +5380,8 @@ class Pattern :
             raise TypeError("surface is not a Surface")
         #end if
         result = celf(cairo.cairo_pattern_create_for_surface(surface._cairobj))
-        result._surface = surface # to ensure any storage attached to it doesn't go away prematurely
+        _dependent_src[result] = _dependent_src.get(surface)
+          # to ensure any storage attached to it doesn't go away prematurely
         return \
             result
     #end create_for_surface
@@ -5668,24 +5997,28 @@ class Path :
             "iterates over the pieces of the path, namely the sequence of Vector coordinates" \
             " of the points between two successive on-curve points."
             seg_points = iter(self.points)
-            p0 = next(seg_points)
-            assert not p0.off
-            p0 = p0.pt
-            while True :
-                pt = next(seg_points, None)
-                if pt == None :
-                    break
-                pts = [p0]
+            try :
+                p0 = next(seg_points)
+                assert not p0.off
+                p0 = p0.pt
                 while True :
-                    # piece ends at next on-curve point
-                    pts.append(pt.pt)
-                    if not pt.off :
+                    pt = next(seg_points, None)
+                    if pt == None :
                         break
-                    pt = next(seg_points)
+                    pts = [p0]
+                    while True :
+                        # piece ends at next on-curve point
+                        pts.append(pt.pt)
+                        if not pt.off :
+                            break
+                        pt = next(seg_points)
+                    #end while
+                    yield tuple(pts)
+                    p0 = pts[-1]
                 #end while
-                yield tuple(pts)
-                p0 = pts[-1]
-            #end while
+            except StopIteration :
+                return
+            #end try
         #end pieces
 
         def to_elements(self, relative = False, origin = None) :
@@ -6235,6 +6568,9 @@ class FontOptions :
             "hint_style",
             "hint_metrics",
         )
+    if hasattr(cairo, "cairo_font_options_get_variations") : # since 1.16
+        props += ("variations",)
+    #end if
 
     def _check(self) :
         # check for error from last operation on this FontOptions.
@@ -6347,6 +6683,36 @@ class FontOptions :
         cairo.cairo_font_options_set_hint_metrics(self._cairobj, hint)
     #end hint_metrics
 
+    if hasattr(cairo, "cairo_font_options_get_variations") : # since 1.16
+
+        @property
+        def variations(self) :
+            c_text = cairo.cairo_font_options_get_variations(self._cairobj)
+            if c_text != None :
+                result = c_text.decode()
+            else :
+                result = None
+            #end if
+            return \
+                result
+        #end variations
+
+        @variations.setter
+        def variations(self, variations) :
+            self.set_variations(variations)
+        #end variations
+
+        def set_variations(self, variations) :
+            if variations != None :
+                c_variations = variations.encode()
+            else :
+                c_variations = None
+            #end if
+            cairo.cairo_font_options_set_variations(self._cairobj, c_variations)
+        #end set_variations
+
+    #end if
+
     if fontconfig != None :
 
         # <https://www.cairographics.org/manual/cairo-FreeType-Fonts.html#cairo-ft-font-options-substitute>
@@ -6366,7 +6732,15 @@ class FontOptions :
             %
                 ", ".join
                   (
-                    "%s = %d" % (name, getattr(self, name))
+                        "%s = %s"
+                    %
+                        (
+                            name,
+                            (
+                                lambda x : "%d" % x,
+                                lambda x : "%s" % repr(x),
+                            )[name == "variations"](getattr(self, name))
+                        )
                     for name in self.props
                   )
             )
@@ -6472,7 +6846,8 @@ class FontFace :
             " a new FontFace for it."
             _ensure_ft()
             ft_face = ct.c_void_p()
-            status = _ft.FT_New_Face(ct.c_void_p(_ft_lib), filename.encode("utf-8"), face_index, ct.byref(ft_face))
+            c_filename = filename.encode()
+            status = _ft.FT_New_Face(ct.c_void_p(_ft_lib), c_filename, face_index, ct.byref(ft_face))
             if status != 0 :
                 raise RuntimeError("Error %d loading FreeType font" % status)
             #end if
@@ -6553,7 +6928,8 @@ class FontFace :
                 raise TypeError("options must be a FontOptions")
             #end if
             with _FcPatternManager() as patterns :
-                search_pattern = patterns.collect(_fc.FcNameParse(pattern.encode("utf-8")))
+                c_pattern = pattern.encode()
+                search_pattern = patterns.collect(_fc.FcNameParse(c_pattern))
                 if search_pattern == None :
                     raise RuntimeError("cannot parse Fontconfig name pattern")
                 #end if
@@ -6620,8 +6996,9 @@ class FontFace :
     @classmethod
     def toy_create(celf, family, slant, weight) :
         "creates a “toy” FontFace."
+        c_family = family.encode()
         return \
-            celf(cairo.cairo_toy_font_face_create(family.encode("utf-8"), slant, weight))
+            celf(cairo.cairo_toy_font_face_create(c_family, slant, weight))
     #end toy_create
 
     @property
@@ -6730,7 +7107,8 @@ class ScaledFont :
         "returns a TextExtents object giving information about drawing the" \
         " specified text at the font settings."
         result = CAIRO.text_extents_t()
-        cairo.cairo_scaled_font_text_extents(self._cairobj, text.encode("utf-8"), ct.byref(result))
+        c_text = text.encode()
+        cairo.cairo_scaled_font_text_extents(self._cairobj, c_text, ct.byref(result))
         return \
             TextExtents.from_cairo(result)
     #end text_extents
@@ -7325,7 +7703,7 @@ if HAS.XCB_SURFACE :
             (
                 "representation of an XCB %s structure. Fields are %s."
                 "\nCreate by passing all field values by name to the constructor;"
-                " convert an instance to Cairo form with  the to_cairo method."
+                " convert an instance to Cairo form with the to_cairo method."
             %
                 (
                     ctname,
@@ -7439,7 +7817,131 @@ if HAS.XCB_SURFACE :
 #end if
 
 #+
+# Xlib
+#-
+
+if HAS.XLIB_SURFACE :
+
+    class XlibSurface(Surface) :
+        "Surface that draws to an on-screen window via Xlib. Do not instantiate" \
+        " directly; use the create methods. Note that these take low-level pointers" \
+        " and ctypes structures for arguments; it will be up to the particular Xlib" \
+        " binding to provide appropriate translations to these types from its own" \
+        " object wrapper types."
+
+        __slots__ = () # to forestall typos
+
+        @classmethod
+        def create(celf, dpy, drawable, visual, width, height) :
+            c_result = cairo.cairo_xlib_surface_create(dpy, drawable, visual, width, height)
+            return \
+                celf(c_result)
+        #end create
+
+        @classmethod
+        def create_for_bitmap(celf, dpy, bitmap, screen, width, height) :
+            c_result = cairo.cairo_xlib_surface_create(dpy, bitmap, visual, width, height)
+            return \
+                celf(c_result)
+        #end create_for_bitmap
+
+        @property
+        def size(self) :
+            return \
+                Vector \
+                  (
+                    cairo.cairo_xlib_surface_get_width(self._cairobj),
+                    cairo.cairo_xlib_surface_get_height(self._cairobj),
+                  )
+        #end size
+
+        @size.setter
+        def size(self, size) :
+            self.set_size(size)
+        #end size
+
+        def set_size(self, size) :
+            size = Vector.from_tuple(size)
+            cairo.cairo_xlib_surface_set_size(self._cairobj, size.x, size.y)
+            self._check()
+            return \
+                self
+        #end set_size
+
+        @property
+        def depth(self) :
+            return \
+                cairo.cairo_xlib_surface_get_depth(self._cairobj)
+        #end depth
+
+        @property
+        def width(self) :
+            return \
+                cairo.cairo_xlib_surface_get_width(self._cairobj)
+        #end width
+
+        @property
+        def height(self) :
+            return \
+                cairo.cairo_xlib_surface_get_height(self._cairobj)
+        #end height
+
+        @property
+        def display(self) :
+            return \
+                cairo.cairo_xlib_surface_get_display(self._cairobj)
+        #end display
+
+        @property
+        def drawable(self) :
+            return \
+                cairo.cairo_xlib_surface_get_drawable(self._cairobj)
+        #end drawable
+
+        @property
+        def screen(self) :
+            return \
+                cairo.cairo_xlib_surface_get_screen(self._cairobj)
+        #end screen
+
+        @property
+        def visual(self) :
+            return \
+                cairo.cairo_xlib_surface_get_visual(self._cairobj)
+        #end visual
+
+        if HAS.XLIB_XRENDER :
+
+            @classmethod
+            def create_with_xrender_format(celf, dpy, drawable, screen, format, width, height) :
+                c_result = cairo.cairo_xlib_surface_create_with_xrender_format(dpy, drawable, screen, format, width, height)
+                return \
+                    celf(c_result)
+            #end create_with_xrender_format
+
+            @property
+            def xrender_format(self) :
+                return \
+                    cairo.cairo_xlib_surface_get_xrender_format(self._cairobj)
+            #end xrender_format
+
+        #end if
+
+    #end XlibSurface
+
+#end if
+
+#+
 # Overall
 #-
+
+def _atexit() :
+    # disable all __del__ methods at process termination to avoid segfaults
+    for cls in Context, Surface, Device, Pattern, Region, FontOptions, FontFace, ScaledFont :
+        delattr(cls, "__del__")
+    #end for
+#end _atexit
+atexit.register(_atexit)
+del _atexit
 
 del def_struct_class # my work is done
