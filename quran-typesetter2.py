@@ -13,10 +13,6 @@ logging.basicConfig(format="%(asctime)s - %(message)s")
 logger = logging.getLogger("typesetter")
 logger.setLevel(logging.INFO)
 
-Q_STR = "\u06DE\u00A0"
-Q_PUA = 0x100000
-P_STR = "\u06E9"
-
 
 class Document:
     """Class representing the main document and holding document-wide settings
@@ -228,8 +224,6 @@ class Shaper:
         assert word
 
         text = word
-        if ord(word[0]) > Q_PUA:
-            text = word[1:]
 
         self.buffer.clear_contents()
         self.buffer.add_str(text)
@@ -245,14 +239,6 @@ class Shaper:
         hb.shape(self.font, self.buffer)
 
         box = Box(self.doc, Word(text, self.buffer))
-
-
-        # Flag boxes with “quarter” symbol, as it needs some special
-        # handling later.
-        if ord(word[0]) > Q_PUA:
-            box.quarter = ord(word[0]) - Q_PUA
-        if word.startswith(P_STR):
-            box.prostration = True
 
         return box
 
@@ -329,9 +315,6 @@ class Page:
             pos.x = self.doc.get_text_start_pos(self, i)
             text_width = self.doc.get_text_width(i)
             line.draw(cr, pos, text_width)
-            if line.get_quarter() or line.get_prostration():
-                self._show_quarter(line, line.get_quarter(),
-                                   line.get_prostration(), pos.y)
             pos.y += line.height
 
         # Show page number.
@@ -358,65 +341,6 @@ class Page:
             cr.restore()
 
         cr.show_page()
-
-    def _show_quarter(self, line, quarter, prostration, y):
-        """
-        Draw the quarter, group and part text on the margin. A group is 4
-        quarters, a part is 2 groups.
-        """
-
-        if quarter:
-            logger.debug("Quarter %d at page %d", quarter, self.number)
-        if prostration:
-            logger.debug("Prostration at page %d", self.number)
-
-        shaper = self.doc.shaper
-
-        boxes = []
-        if prostration:
-            boxes.append(shaper.shape_word("سجدة"))
-        if quarter:
-            num = quarter % 4
-            if num:
-                # A quarter.
-                words = ("ربع", "نصف", "ثلاثة أرباع")
-                boxes.append(shaper.shape_word(words[num - 1]))
-                boxes.append(shaper.shape_word("الحزب"))
-            else:
-                # A group…
-                group = format_number(quarter/4 + 1)
-                if quarter % 8:
-                    # … without a part.
-                    boxes.append(shaper.shape_word("حزب"))
-                    boxes.append(shaper.shape_word(group))
-                else:
-                    # … with a part.
-                    part = format_number(quarter/8 + 1)
-                    # XXX: [::-1] is a hack to get the numbers LTR
-                    boxes.append(shaper.shape_word("حزب %s" % group[::-1]))
-                    boxes.append(shaper.shape_word("جزء %s" % part[::-1]))
-
-        # We want the text to be smaller than the body size…
-        scale = .8
-        # … and the leading to be tighter.
-        leading = self.doc.body_font_size
-
-        w = max([box.width for box in boxes])
-        h = leading * len(boxes)
-        x = self.doc.get_side_mark_pos(self, line, w)
-        # Center the boxes vertically around the line.
-        y -= h * scale/2
-        for box in boxes:
-            # Center the box horizontally relative to the others
-            offset = (w - box.width) * scale/2
-
-            self.cr.save()
-            self.cr.translate((x + offset, y))
-            self.cr.scale((scale, scale))
-            self.cr.show_glyphs(box.data.glyphs)
-            self.cr.restore()
-
-            y += leading
 
     def strip(self):
         while not self.lines[-1].is_box():
@@ -535,12 +459,6 @@ class Glue(linebreak.Glue):
     def draw(self, cr, pos, text_width=0):
         pass
 
-    def get_quarter(self):
-        return 0
-
-    def get_prostration(self):
-        return False
-
 
 class Penalty(linebreak.Penalty):
     """Wrapper around linebreak.Penalty to hold our common API."""
@@ -552,12 +470,6 @@ class Penalty(linebreak.Penalty):
     def draw(self, cr, pos, text_width=0):
         pass
 
-    def get_quarter(self):
-        return 0
-
-    def get_prostration(self):
-        return False
-
 
 class Box(linebreak.Box):
     """Class representing a word."""
@@ -565,14 +477,6 @@ class Box(linebreak.Box):
     def __init__(self, doc, word):
         super().__init__(word.width, word)
         self.doc = doc
-        self.quarter = 0
-        self.prostration = False
-
-    def get_quarter(self):
-        return self.quarter
-
-    def get_prostration(self):
-        return self.prostration
 
     def draw(self, cr, pos, text_width=0):
         cr.save()
@@ -600,18 +504,6 @@ class Line(linebreak.Box):
         self.doc = doc
         self.height = self.width
         self.boxes = boxes
-
-    def get_quarter(self):
-        for box in self.boxes:
-            if box.get_quarter():
-                return box.get_quarter()
-        return 0
-
-    def get_prostration(self):
-        for box in self.boxes:
-            if box.get_prostration():
-                return box.get_prostration()
-        return False
 
     def draw(self, cr, pos, text_width):
         self.strip()
@@ -672,23 +564,12 @@ def read_data(datadir):
         logger.error("File not found: %s", path)
         return
 
-    quarter = 0
     chapters = []
     for i in range(1, 115):
         path = os.path.join(datadir, "%03d.txt" % i)
         if os.path.isfile(path):
             with open(path, "r", encoding="utf-8") as textfile:
-                lines = []
-                for j, line in enumerate(textfile.readlines()):
-                    line = line.strip("\n")
-                    if line.startswith(Q_STR):
-                        quarter += 1
-                        if j == 0:
-                            # Drop quarter glyph at start of chapter.
-                            line = chr(Q_PUA + quarter) + line[2:]
-                        else:
-                            line = chr(Q_PUA + quarter) + Q_STR + line[2:]
-                    lines.append(line)
+                lines = [l.strip("\n") for l in textfile.readlines()]
                 chapter = Chapter(" ".join(lines), i, *metadata[i], len(lines))
                 chapters.append(chapter)
         else:
