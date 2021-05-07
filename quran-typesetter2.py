@@ -18,7 +18,7 @@ class Document:
     """Class representing the main document and holding document-wide settings
        and state."""
 
-    def __init__(self, chapters, filename, decorations=True):
+    def __init__(self, chapters, filename):
         logger.info("Initializing the document: %s", filename)
 
         # Settungs
@@ -27,15 +27,13 @@ class Document:
         self.body_font_size   = 11.5
         self.lines_per_page   = 12
         self.leading          = 29  # ~0.4in
-        self.text_widths      = [205] # ~2.84in
+        self.text_width       = 205 # ~2.84in
         self.page_width       = 396 # 5.5in
         self.page_height      = 540 # 7.5in
         # From top of page to first baseline.
         self.top_margin       = 105 # ~1.46
-        self.outer_margin     = 100 # ~1.4in
-        self.page_number_ypos = 460 # ~6.4in
 
-        self.page_decorations = decorations
+        self.text_start_pos = self.text_width + (self.page_width - self.text_width) / 2
 
         # Cache for shaped words.
         self.shaper = Shaper(self)
@@ -51,37 +49,6 @@ class Document:
         cr.set_source_colour(qh.Colour.grey(0))
 
         self.chapters = chapters
-
-    def get_text_width(self, line):
-        if line >= len(self.text_widths):
-            line = -1
-        return self.text_widths[line]
-
-    def get_page_number_pos(self, page, width):
-        pos = qh.Vector(0, self.page_number_ypos)
-
-        # Center the number relative to the text box.
-        line = self.lines_per_page - 1
-        text_width = self.get_text_width(line)
-        pos.x = self.get_text_start_pos(page, line)
-        pos.x -= text_width/2
-
-        # Center the box around the position
-        pos.x -= width/2
-
-        return pos
-
-    def get_text_start_pos(self, page, line):
-        if page.number % 2 == 0:
-            return self.page_width - self.outer_margin
-        else:
-            return self.outer_margin + self.get_text_width(line)
-
-    def get_side_mark_pos(self, page, line, width):
-        x = self.outer_margin/2 - width/2
-        if page.number % 2 == 0:
-            x += self.get_text_start_pos(page, line)
-        return x
 
     def save(self):
         lines = self._create_lines()
@@ -145,7 +112,7 @@ class Document:
 
         logger.info("Chapter %d…", chapter.number)
 
-        lengths = self.text_widths
+        lengths = [self.text_width]
         nodes = self.shaper.shape_paragraph(chapter.text)
         breaks = nodes.compute_breakpoints(lengths, tolerance=4, looseness=10)
         assert breaks[-1] == len(nodes) - 1
@@ -191,9 +158,8 @@ class Chapter:
 
     def get_heading_text(self):
         text = []
-        number = format_number(self.number)
         verses = format_number(self.verses)
-        text.append("(%s) سورة %s %s" % (number, self.name, self.place))
+        text.append(" سورة %s %s" % (self.name, self.place))
         text.append("و آياتها %s" % verses)
 
         return text
@@ -311,34 +277,11 @@ class Page:
 
         lines = self.lines
         pos = qh.Vector(0, self.doc.top_margin)
+        text_width = self.doc.text_width
         for i, line in enumerate(lines):
-            pos.x = self.doc.get_text_start_pos(self, i)
-            text_width = self.doc.get_text_width(i)
+            pos.x = self.doc.text_start_pos
             line.draw(cr, pos, text_width)
             pos.y += line.height
-
-        # Show page number.
-        box = shaper.shape_word(format_number(self.number))
-        pos = self.doc.get_page_number_pos(self, box.width)
-        box.draw(cr, pos)
-
-        # Draw page decorations.
-        if self.doc.page_decorations:
-            o = 8
-            x = self.doc.get_text_start_pos(self, 0) + o
-            y = self.doc.top_margin - self.doc.leading/2 - o
-            w = self.doc.get_text_width(0) + o * 2
-            h = self.doc.leading * self.doc.lines_per_page + o
-
-            cr.save()
-            rect = qh.Rect(x - w, y, w, h)
-            cr.rectangle(rect)
-            cr.set_line_width(1)
-            cr.stroke()
-            cr.rectangle(rect.inset((-5, -5)))
-            cr.set_line_width(3)
-            cr.stroke()
-            cr.restore()
 
         cr.show_page()
 
@@ -578,8 +521,8 @@ def read_data(datadir):
 
     return chapters
 
-def main(chapters, filename, decorations):
-    document = Document(chapters, filename, decorations)
+def main(chapters, filename):
+    document = Document(chapters, filename)
     document.save()
 
 if __name__ == "__main__":
@@ -595,9 +538,6 @@ if __name__ == "__main__":
     parser.add_argument("--chapters", "-c", metavar="N", nargs="*", type=int,
             choices=range(1, 115), default=range(1, 115),
             help="Which chapters to process (Default: all)")
-    parser.add_argument("--no-decorations", "-d", action="store_false",
-            dest="decorations",
-            help="Don’t draw page decorations")
     parser.add_argument("--quite", "-q", action="store_true",
             help="Don’t print normal messages")
     parser.add_argument("--verbose", "-v", action="store_true",
@@ -618,4 +558,4 @@ if __name__ == "__main__":
     for i in args.chapters:
         chapters.append(all_chapters[i - 1])
 
-    main(chapters, args.outfile, args.decorations)
+    main(chapters, args.outfile)
