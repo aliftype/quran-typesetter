@@ -115,7 +115,7 @@ class Document:
         lengths = [self.text_width]
         nodes = self.shaper.shape_paragraph(chapter.text)
         breaks = nodes.compute_breakpoints(lengths, tolerance=4, looseness=10)
-        assert breaks[-1] == len(nodes) - 1
+        #assert breaks[-1] == len(nodes) - 1
 
         lines = [self._create_heading(chapter)]
         if chapter.opening:
@@ -178,7 +178,7 @@ class Shaper:
         # Get the natural space width
         self.space = self.shape_word(" ").width
 
-    def shape_word(self, word):
+    def shape_word(self, text):
         """
         Shapes a single word and returns the corresponding box. To speed things
         a bit, we cache the shaped words. We assume all our text is in Arabic
@@ -186,10 +186,6 @@ class Shaper:
         (we are cheating a bit to avoid doing proper bidirectional text as
         it is largely superfluous for us here).
         """
-
-        assert word
-
-        text = word
 
         self.buffer.clear_contents()
         self.buffer.add_str(text)
@@ -200,13 +196,56 @@ class Shaper:
             self.buffer.direction = hb.HARFBUZZ.DIRECTION_RTL
         self.buffer.script = hb.HARFBUZZ.SCRIPT_ARABIC
         self.buffer.language = hb.Language.from_string("ar")
-        self.buffer.cluster_level = hb.HARFBUZZ.BUFFER_CLUSTER_LEVEL_MONOTONE_CHARACTERS
 
         hb.shape(self.font, self.buffer)
 
         box = Box(self.doc, Word(text, self.buffer))
 
         return box
+
+    def shape_verse(self, text):
+        """
+        Shapes a single word and returns the corresponding box. To speed things
+        a bit, we cache the shaped words. We assume all our text is in Arabic
+        script and language. The direction is almost always right-to-left,
+        (we are cheating a bit to avoid doing proper bidirectional text as
+        it is largely superfluous for us here).
+        """
+
+        buf = self.buffer
+
+        buf.clear_contents()
+        buf.add_str(text)
+        buf.direction = hb.HARFBUZZ.DIRECTION_RTL
+        buf.script = hb.HARFBUZZ.SCRIPT_ARABIC
+        buf.language = hb.Language.from_string("ar")
+
+        hb.shape(self.font, self.buffer)
+        infos = buf.glyph_infos
+        positions = buf.glyph_positions
+        flip = qh.Vector(1, -1)
+        i = len(infos) - 1
+        nodes = []
+        while i >= 0:
+            j = i
+            while j >= 0 and infos[i].cluster == infos[j].cluster:
+                j -= 1
+
+            pos = qh.Vector(0, 0)
+            glyphs = []
+            for k in reversed(range(i, j, -1)):
+                glyphs.append(qh.Glyph(infos[k].codepoint, pos + flip * positions[k].offset))
+                pos += flip * positions[k].advance
+
+            if len(glyphs) == 1 and text[infos[i].cluster] in (" ", "\u00A1"):
+                advance = pos.x
+                nodes.append(Glue(self.doc, advance, advance / 2, advance / 1.5))
+            else:
+                nodes.append(Box(self.doc, Cluster(text, glyphs, pos)))
+
+            i = j
+
+        return nodes
 
     def shape_paragraph(self, text):
         """
@@ -223,25 +262,26 @@ class Shaper:
 
         # Split the text into words, treating space, newline and no-break space
         # as word separators.
-        word = ""
+        verse = ""
         text = text.strip()
         textlen = len(text)
-        for i, ch in enumerate(text):
-            if ch == "\u00A0" and unicodedata.combining(text[i + 1] if i < textlen else ""):
-                word += ch
-            elif ch in (" ", "\u00A0"):
-                nodes.append(self.shape_word(word))
-
-                # Prohibit line breaking at no-break space.
-                if ch == "\u00A0":
-                    nodes.append(Penalty(self.doc, 0, linebreak.INFINITY))
-
-                nodes.append(Glue(self.doc, space, space/2, space/1.5))
-                word = ""
+        i = 0
+        while i < textlen:
+            ch = text[i]
+            if ch == "\u06DD":
+                nodes.extend(self.shape_verse(verse))
+                verse = ""
+                mark = ch
+                i += 1
+                while i < textlen and unicodedata.decimal(text[i], None) is not None:
+                    mark += text[i]
+                    i += 1
+                nodes.append(self.shape_word(mark))
             else:
-                word += ch
-        nodes.append(self.shape_word(word)) # last word
+                verse += ch
+                i += 1
 
+        nodes.extend(self.shape_verse(verse))
         nodes.add_closing_penalty()
 
         return nodes
@@ -298,37 +338,17 @@ class Word:
         glyphs, pos = buf.get_glyphs()
         self.glyphs = glyphs
         self.width = pos.x
+        self.clusters = [(len(text), len(glyphs))]
 
-        if False:
-            # Do clusters per glyph/charcter, disabled for now as it does not
-            # seem to improve things that much.
-            self.backward = hb.HARFBUZZ.DIRECTION_IS_BACKWARD(buf.direction)
-            infos = buf.glyph_infos
-            if self.backward:
-                infos = infos[::-1]
 
-            clusters = []
-            i = 0
-            while i < len(infos):
-                info = infos[i]
+class Cluster:
+    """Class representing a shaped cluster."""
 
-                n_glyphs = 1
-                i += 1
-                while (i < len(infos)) and (infos[i].cluster == info.cluster):
-                    i += 1
-                    n_glyphs += 1
-
-                if i < len(infos):
-                    next_cluster = infos[i].cluster
-                else:
-                    next_cluster = len(text)
-                n_chars = next_cluster - info.cluster
-
-                clusters.append((n_chars, n_glyphs))
-            self.clusters = clusters
-        else:
-            self.backward = False
-            self.clusters = [(len(text), len(glyphs))]
+    def __init__(self, text, glyphs, pos):
+        self.text = text
+        self.glyphs = glyphs
+        self.width = pos.x
+        self.clusters = [(len(text), len(glyphs))]
 
 
 class LineList(linebreak.NodeList):
@@ -425,11 +445,7 @@ class Box(linebreak.Box):
         cr.save()
         cr.translate(pos)
         word = self.data
-        if word.backward:
-            flags = qh.CAIRO.TEXT_CLUSTER_FLAG_BACKWARD
-        else:
-            flags = 0
-        cr.show_text_glyphs(word.text, word.glyphs, word.clusters, flags)
+        cr.show_text_glyphs(word.text, word.glyphs, word.clusters, 0)
         cr.restore()
 
 
@@ -463,7 +479,7 @@ class Line(linebreak.Box):
             box.draw(cr, pos)
 
     def strip(self):
-        while not self.boxes[-1].is_box():
+        while self.boxes and not self.boxes[-1].is_box():
             self.boxes.pop()
 
 
