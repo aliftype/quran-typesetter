@@ -1,5 +1,6 @@
 import logging
 import math
+import unicodedata
 
 import harfbuzz as hb
 import qahirah as qh
@@ -272,8 +273,12 @@ class Shaper:
         # Split the text into words, treating space, newline and no-break space
         # as word separators.
         word = ""
-        for i, ch in enumerate(text.strip()):
-            if ch in (" ", "\u00A0"):
+        text = text.strip()
+        textlen = len(text)
+        for i, ch in enumerate(text):
+            if ch == "\u00A0" and unicodedata.combining(text[i + 1] if i < textlen else ""):
+                word += ch
+            elif ch in (" ", "\u00A0"):
                 nodes.append(self.shape_word(word))
 
                 # Prohibit line breaking at no-break space.
