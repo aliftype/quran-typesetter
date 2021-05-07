@@ -42,7 +42,6 @@ class Document:
         self.page_decorations = decorations
 
         # Cache for shaped words.
-        self.word_cache = {}
         self.shaper = Shaper(self)
 
         self.surface = qh.PDFSurface.create(filename, (self.page_width,
@@ -232,23 +231,21 @@ class Shaper:
         if ord(word[0]) > Q_PUA:
             text = word[1:]
 
-        if text not in self.doc.word_cache:
-            self.buffer.clear_contents()
-            self.buffer.add_str(text)
-            # Everything is RTL except aya numbers and other digits-only words.
-            if text[0] in ("\u06DD", "(") or text.isdigit():
-                self.buffer.direction = hb.HARFBUZZ.DIRECTION_LTR
-            else:
-                self.buffer.direction = hb.HARFBUZZ.DIRECTION_RTL
-            self.buffer.script = hb.HARFBUZZ.SCRIPT_ARABIC
-            self.buffer.language = hb.Language.from_string("ar")
-            self.buffer.cluster_level = hb.HARFBUZZ.BUFFER_CLUSTER_LEVEL_MONOTONE_CHARACTERS
+        self.buffer.clear_contents()
+        self.buffer.add_str(text)
+        # Everything is RTL except aya numbers and other digits-only words.
+        if text[0] in ("\u06DD", "(") or text.isdigit():
+            self.buffer.direction = hb.HARFBUZZ.DIRECTION_LTR
+        else:
+            self.buffer.direction = hb.HARFBUZZ.DIRECTION_RTL
+        self.buffer.script = hb.HARFBUZZ.SCRIPT_ARABIC
+        self.buffer.language = hb.Language.from_string("ar")
+        self.buffer.cluster_level = hb.HARFBUZZ.BUFFER_CLUSTER_LEVEL_MONOTONE_CHARACTERS
 
-            hb.shape(self.font, self.buffer)
+        hb.shape(self.font, self.buffer)
 
-            self.doc.word_cache[text] = Word(text, self.buffer)
+        box = Box(self.doc, Word(text, self.buffer))
 
-        box = Box(self.doc, self.doc.word_cache[text])
 
         # Flag boxes with “quarter” symbol, as it needs some special
         # handling later.
