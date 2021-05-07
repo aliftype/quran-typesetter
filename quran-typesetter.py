@@ -214,6 +214,9 @@ class Shaper:
         self.font = hb.Font.ft_create(ft_face)
         self.buffer = hb.Buffer.create()
 
+        # Get the natural space width
+        self.space = self.shape_word(" ").width
+
     def shape_word(self, word):
         """
         Shapes a single word and returns the corresponding box. To speed things
@@ -267,8 +270,7 @@ class Shaper:
         """
         nodes = linebreak.NodeList()
 
-        # Get the natural space width
-        space = self.shape_word(" ").width
+        space = self.space
 
         # Split the text into words, treating space, newline and no-break space
         # as word separators.
