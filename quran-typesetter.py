@@ -656,7 +656,7 @@ class Heading(Line):
 def read_data(datadir):
     path = os.path.join(datadir, "meta.txt")
     if os.path.isfile(path):
-        with open(path, "r") as textfile:
+        with open(path, "r", encoding="utf-8") as textfile:
             metadata = {}
             lines = [l.strip().split("\t") for l in textfile.readlines()]
             for num, line in enumerate(lines):
@@ -673,7 +673,7 @@ def read_data(datadir):
     for i in range(1, 115):
         path = os.path.join(datadir, "%03d.txt" % i)
         if os.path.isfile(path):
-            with open(path, "r") as textfile:
+            with open(path, "r", encoding="utf-8") as textfile:
                 lines = []
                 for j, line in enumerate(textfile.readlines()):
                     line = line.strip("\n")

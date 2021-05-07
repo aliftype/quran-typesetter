@@ -62,6 +62,12 @@ LIBNAME = \
                 "freetype" : "libfreetype.6.dylib",
                 "fontconfig" : "libfontconfig.1.dylib",
             },
+        "win32" :
+            {
+                "cairo" : "libcairo-2.dll",
+                "freetype" : "libfreetype-6.dll",
+                "fontconfig" : "libfontconfig-1.dll",
+            },
     }[sys.platform]
 
 cairo = ct.cdll.LoadLibrary(LIBNAME["cairo"])

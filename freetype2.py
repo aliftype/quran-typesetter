@@ -37,6 +37,7 @@ from numbers import \
     Real
 import array
 import ctypes as ct
+import ctypes.util
 import struct
 import weakref
 try :
@@ -49,21 +50,23 @@ LIBNAME = \
     {
         "linux" :
             {
-                "c" : "libc.so.6",
                 "freetype" : "libfreetype.so.6",
                 "fontconfig" : "libfontconfig.so.1",
             },
         "openbsd6" :
             {
-                "c" : "libc.so.6",
                 "freetype" : "libfreetype.so.28",
                 "fontconfig" : "libfontconfig.so.11",
             },
         "darwin" :
             {
-                "c" : "libc.dylib",
                 "freetype" : "libfreetype.6.dylib",
                 "fontconfig" : "libfontconfig.1.dylib",
+            },
+        "win32" :
+            {
+                "freetype" : "libfreetype-6.dll",
+                "fontconfig" : "libfontconfig-1.dll",
             },
     }[sys.platform]
 
@@ -78,7 +81,7 @@ except OSError as fail :
         raise
     #end if
 #end try
-libc = ct.cdll.LoadLibrary(LIBNAME["c"])
+libc = ct.cdll.LoadLibrary(ct.util.find_library("c"))
 
 def struct_to_dict(item, itemtype, indirect, extra_decode = None) :
     "decodes the elements of a ctypes Structure into a dict. extra_decode" \

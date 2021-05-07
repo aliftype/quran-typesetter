@@ -57,6 +57,10 @@ LIBNAME = \
             {
                 "harfbuzz" : "libharfbuzz.dylib",
             },
+        "win32" :
+            {
+                "harfbuzz" : "libharfbuzz-0.dll",
+            },
     }[sys.platform]
 
 hb = ct.cdll.LoadLibrary(LIBNAME["harfbuzz"])
