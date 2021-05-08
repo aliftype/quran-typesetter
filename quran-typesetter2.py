@@ -203,19 +203,15 @@ class Shaper:
 
         return box
 
-    def shape_verse(self, text):
+    def shape_verse(self, verse):
         """
-        Shapes a single word and returns the corresponding box. To speed things
-        a bit, we cache the shaped words. We assume all our text is in Arabic
-        script and language. The direction is almost always right-to-left,
-        (we are cheating a bit to avoid doing proper bidirectional text as
-        it is largely superfluous for us here).
+        Shapes a single verse and returns the corresponding nodes.
         """
 
         buf = self.buffer
 
         buf.clear_contents()
-        buf.add_str(text)
+        buf.add_str(verse)
         buf.direction = hb.HARFBUZZ.DIRECTION_RTL
         buf.script = hb.HARFBUZZ.SCRIPT_ARABIC
         buf.language = hb.Language.from_string("ar")
@@ -237,11 +233,13 @@ class Shaper:
                 glyphs.append(qh.Glyph(infos[k].codepoint, pos + flip * positions[k].offset))
                 pos += flip * positions[k].advance
 
-            if len(glyphs) == 1 and text[infos[i].cluster] in (" ", "\u00A1"):
-                advance = pos.x
-                nodes.append(Glue(self.doc, advance, advance / 2, advance / 1.5))
+            text = verse[infos[i].cluster:infos[j + 1].cluster + 1]
+
+            width = pos.x
+            if text == " ":
+                nodes.append(Glue(self.doc, width, width / 2, width / 1.5))
             else:
-                nodes.append(Box(self.doc, Cluster(text, glyphs, pos)))
+                nodes.append(Box(self.doc, Cluster(text, glyphs, width)))
 
             i = j
 
@@ -344,10 +342,10 @@ class Word:
 class Cluster:
     """Class representing a shaped cluster."""
 
-    def __init__(self, text, glyphs, pos):
+    def __init__(self, text, glyphs, width):
         self.text = text
         self.glyphs = glyphs
-        self.width = pos.x
+        self.width = width
         self.clusters = [(len(text), len(glyphs))]
 
 
