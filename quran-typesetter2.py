@@ -14,6 +14,7 @@ logger.setLevel(logging.INFO)
 
 
 DIGITS = ("٠", "١", "٢", "٣", "٤", "٥", "٦", "٧", "٨", "٩")
+RIGH_JOINING = ("ا", "آ", "أ", "إ", "د", "ذ", "ر", "ز", "و", "ؤ")
 
 
 class Document:
@@ -242,6 +243,9 @@ class Shaper:
                 nodes.append(Glue(self.doc, width, width / 2, width / 1.5))
             else:
                 nodes.append(Box(self.doc, Cluster(text, glyphs, width)))
+                if text[0] in RIGH_JOINING and verse[infos[j + 1].cluster + 1] != " ":
+                    nodes.append(Penalty(self.doc, 0, 100))
+                    nodes.append(Glue(self.doc, 0, self.space, 0))
 
             i = j
 
