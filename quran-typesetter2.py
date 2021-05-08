@@ -1,6 +1,5 @@
 import logging
 import math
-import unicodedata
 
 import harfbuzz as hb
 import qahirah as qh
@@ -12,6 +11,9 @@ ft = qh.get_ft_lib()
 logging.basicConfig(format="%(asctime)s - %(message)s")
 logger = logging.getLogger("typesetter")
 logger.setLevel(logging.INFO)
+
+
+DIGITS = ("٠", "١", "٢", "٣", "٤", "٥", "٦", "٧", "٨", "٩")
 
 
 class Document:
@@ -271,7 +273,7 @@ class Shaper:
                 verse = ""
                 mark = ch
                 i += 1
-                while i < textlen and unicodedata.decimal(text[i], None) is not None:
+                while i < textlen and text[i] in DIGITS:
                     mark += text[i]
                     i += 1
                 nodes.append(self.shape_word(mark))
