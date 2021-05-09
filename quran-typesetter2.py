@@ -31,7 +31,7 @@ class Document:
         # Settings
         # The defaults here roughly match “the 12-lines Mushaf”.
         self.body_font        = "Raqq.ttf"
-        self.body_font_size   = 77
+        self.body_font_size   = 125
         self.lines_per_page   = 5
         self.leading          = 102
         self.text_width       = 717
@@ -234,7 +234,7 @@ class Shaper:
                     nodes.append(Box(self.doc, Cluster(chars, glyphs, adv)))
 
                     # Add glue with the kerning amount with minimal stretch and shrink.
-                    nodes.append(Glue(self.doc, kern.x, kern.x / 10, kern.x / 10))
+                    nodes.append(Glue(self.doc, kern.x, kern.x / 8.5, kern.x / 8.5))
                 else:
                     nodes.append(Box(self.doc, Cluster(chars, glyphs, pos.x)))
 
@@ -401,13 +401,14 @@ class Glue(linebreak.Glue):
 
     def __init__(self, doc, width, stretch, shrink):
         super().__init__(width, stretch, shrink)
+        self.origwidth = width
         self.doc = doc
 
     def draw(self, cr, pos):
         if self.doc.debug:
             width = self.width
             cr.save()
-            if width >= 0:
+            if width >= self.origwidth:
                 cr.set_source_colour((0, 1, 0, 0.2))
             else:
                 cr.set_source_colour((1, 0, 0, 0.2))
