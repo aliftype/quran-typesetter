@@ -6,6 +6,8 @@ import qahirah as qh
 
 import linebreak
 
+from number import format_number
+
 ft = qh.get_ft_lib()
 
 logging.basicConfig(format="%(asctime)s - %(message)s")
@@ -21,20 +23,22 @@ class Document:
     """Class representing the main document and holding document-wide settings
        and state."""
 
-    def __init__(self, chapters, filename):
+    def __init__(self, chapters, filename, debug):
         logger.info("Initializing the document: %s", filename)
 
-        # Settungs
+        self.debug = debug
+
+        # Settings
         # The defaults here roughly match “the 12-lines Mushaf”.
-        self.body_font        = "Amiri Quran"
-        self.body_font_size   = 11.5
-        self.lines_per_page   = 12
-        self.leading          = 29  # ~0.4in
-        self.text_width       = 205 # ~2.84in
-        self.page_width       = 396 # 5.5in
-        self.page_height      = 540 # 7.5in
+        self.body_font        = "Raqq"
+        self.body_font_size   = 77
+        self.lines_per_page   = 5
+        self.leading          = 102
+        self.text_width       = 717
+        self.page_width       = 1024
+        self.page_height      = 755
         # From top of page to first baseline.
-        self.top_margin       = 105 # ~1.46
+        self.top_margin       = 193
 
         self.text_start_pos = self.text_width + (self.page_width - self.text_width) / 2
 
@@ -103,12 +107,9 @@ class Document:
         return pages
 
     def _create_heading(self, chapter):
-        lines = []
-        for text in chapter.get_heading_text():
-            boxes = self.shaper.shape_paragraph(text)
-            lines.append(Line(self, boxes))
+        boxes = self.shaper.shape_paragraph(chapter.get_heading_text())
 
-        return Heading(self, lines)
+        return Heading(self, boxes)
 
     def _process_chapter(self, chapter):
         """Shapes the text and breaks it into lines."""
@@ -116,14 +117,14 @@ class Document:
         logger.info("Chapter %d…", chapter.number)
 
         lengths = [self.text_width]
-        nodes = self.shaper.shape_paragraph(chapter.text)
+        text = ""
+        if chapter.opening:
+            text = "بسمِ الله الرَحمنِ الرحيمِ. "
+        nodes = self.shaper.shape_paragraph(text + chapter.text)
         breaks = nodes.compute_breakpoints(lengths, tolerance=4, looseness=10)
         #assert breaks[-1] == len(nodes) - 1
 
         lines = [self._create_heading(chapter)]
-        if chapter.opening:
-            box = self.shaper.shape_word("\uFDFD")
-            lines.append(Line(self, [box]))
 
         start = 0
         for i, breakpoint in enumerate(breaks[1:]):
@@ -160,10 +161,8 @@ class Chapter:
         self.verses = verses
 
     def get_heading_text(self):
-        text = []
         verses = format_number(self.verses)
-        text.append(" سورة %s %s" % (self.name, self.place))
-        text.append("و آياتها %s" % verses)
+        text = f"{self.name} {verses}"
 
         return text
 
@@ -193,7 +192,7 @@ class Shaper:
         self.buffer.clear_contents()
         self.buffer.add_str(text)
         # Everything is RTL except aya numbers and other digits-only words.
-        if text[0] in ("\u06DD", "(") or text.isdigit():
+        if text[0] == "\u06DD":
             self.buffer.direction = hb.HARFBUZZ.DIRECTION_LTR
         else:
             self.buffer.direction = hb.HARFBUZZ.DIRECTION_RTL
@@ -240,12 +239,11 @@ class Shaper:
 
             width = pos.x
             if text == " ":
-                nodes.append(Glue(self.doc, width, width / 2, width / 1.5))
+                nodes.append(Glue(self.doc, width, 40, 5)) # XXX
             else:
                 nodes.append(Box(self.doc, Cluster(text, glyphs, width)))
                 if text[0] in RIGH_JOINING and verse[infos[j + 1].cluster + 1] != " ":
-                    nodes.append(Penalty(self.doc, 0, 100))
-                    nodes.append(Glue(self.doc, 0, self.space, 0))
+                    nodes.append(Glue(self.doc, 0, 40, 5)) # XXX
 
             i = j
 
@@ -291,13 +289,6 @@ class Shaper:
         return nodes
 
 
-def format_number(number):
-    """Format number to Arabic-Indic digits."""
-
-    number = int(number)
-    return "".join([chr(ord(c) + 0x0630) for c in str(number)])
-
-
 class Page:
     """Class representing a page of text."""
 
@@ -321,10 +312,9 @@ class Page:
 
         lines = self.lines
         pos = qh.Vector(0, self.doc.top_margin)
-        text_width = self.doc.text_width
         for i, line in enumerate(lines):
             pos.x = self.doc.text_start_pos
-            line.draw(cr, pos, text_width)
+            line.draw(cr, pos)
             pos.y += line.height
 
         cr.show_page()
@@ -423,8 +413,17 @@ class Glue(linebreak.Glue):
         super().__init__(width, stretch, shrink)
         self.doc = doc
 
-    def draw(self, cr, pos, text_width=0):
-        pass
+    def draw(self, cr, pos):
+        if self.doc.debug:
+            width = self.width
+            cr.save()
+            if width >= 0:
+                cr.set_source_colour((0, 1, 0, 0.2))
+            else:
+                cr.set_source_colour((1, 0, 0, 0.2))
+            cr.rectangle(qh.Rect(pos.x, pos.y, width, -self.doc.leading))
+            cr.fill()
+            cr.restore()
 
 
 class Penalty(linebreak.Penalty):
@@ -434,7 +433,7 @@ class Penalty(linebreak.Penalty):
         super().__init__(width, penalty, flagged)
         self.doc = doc
 
-    def draw(self, cr, pos, text_width=0):
+    def draw(self, cr, pos):
         pass
 
 
@@ -445,18 +444,29 @@ class Box(linebreak.Box):
         super().__init__(word.width, word)
         self.doc = doc
 
-    def draw(self, cr, pos, text_width=0):
+    def draw(self, cr, pos):
         cr.save()
         cr.translate(pos)
         word = self.data
         cr.show_text_glyphs(word.text, word.glyphs, word.clusters, 0)
         cr.restore()
+        if self.doc.debug:
+            width = self.width
+            cr.save()
+            cr.set_line_width(.5)
+            cr.set_source_colour((0, 0, 1, 0.2))
+            cr.rectangle(qh.Rect(pos.x, pos.y, width, -self.doc.leading))
+            cr.stroke()
+            cr.restore()
 
 
 class LineGlue(Glue):
     def __init__(self, doc, height=0, stretch=0, shrink=0):
         super().__init__(doc, height, stretch, shrink)
         self.height = self.width
+
+    def draw(self, cr, pos, width=0):
+        pass
 
 
 class Line(linebreak.Box):
@@ -468,12 +478,8 @@ class Line(linebreak.Box):
         self.height = self.width
         self.boxes = boxes
 
-    def draw(self, cr, pos, text_width):
+    def draw(self, cr, pos):
         self.strip()
-        width = sum([box.width for box in self.boxes])
-        # Center lines not equal to text width.
-        if not math.isclose(width, text_width):
-            pos.x -= (text_width - width)/2
 
         for box in self.boxes:
             # We start drawing from the right edge of the text block,
@@ -490,25 +496,14 @@ class Line(linebreak.Box):
 class Heading(Line):
     """Class representing a chapter heading."""
 
-    def __init__(self, doc, lines):
-        super().__init__(doc, lines)
-        self.height = doc.leading * 1.8
+    def __init__(self, doc, boxes):
+        super().__init__(doc, boxes)
+        self.height = doc.leading
 
-    def draw(self, cr, pos, width):
-        offset = self.doc.leading/2
-        height = self.height - offset
-
-        linepos = qh.Vector(pos.x, pos.y)
-        for line in self.boxes:
-            line.draw(cr, linepos, width)
-            linepos.x = pos.x
-            linepos.y += line.height - offset/1.2
-
+    def draw(self, cr, pos):
         cr.save()
-        cr.set_line_width(.5)
-        cr.move_to((pos.x, pos.y - offset))
-        cr.rectangle(qh.Rect(pos.x - width, pos.y - offset, width, height))
-        cr.stroke()
+        cr.set_source_colour((0.83, 0.68, 0.21)) # XXX
+        super().draw(cr, pos)
         cr.restore()
 
 
@@ -527,22 +522,21 @@ def read_data(datadir):
         logger.error("File not found: %s", path)
         return
 
-    chapters = []
+    chapters = {}
     for i in range(1, 115):
         path = os.path.join(datadir, "%03d.txt" % i)
         if os.path.isfile(path):
             with open(path, "r", encoding="utf-8") as textfile:
                 lines = [l.strip("\n") for l in textfile.readlines()]
                 chapter = Chapter(" ".join(lines), i, *metadata[i], len(lines))
-                chapters.append(chapter)
+                chapters[i] = chapter
         else:
-            logger.error("File not found: %s", path)
-            return
+            pass
 
     return chapters
 
-def main(chapters, filename):
-    document = Document(chapters, filename)
+def main(chapters, filename, debug):
+    document = Document(chapters, filename, debug)
     document.save()
 
 if __name__ == "__main__":
@@ -558,6 +552,8 @@ if __name__ == "__main__":
     parser.add_argument("--chapters", "-c", metavar="N", nargs="*", type=int,
             choices=range(1, 115), default=range(1, 115),
             help="Which chapters to process (Default: all)")
+    parser.add_argument("--debug", "-d", action="store_true",
+            help="Draw some debugging aids")
     parser.add_argument("--quite", "-q", action="store_true",
             help="Don’t print normal messages")
     parser.add_argument("--verbose", "-v", action="store_true",
@@ -576,6 +572,6 @@ if __name__ == "__main__":
 
     chapters = []
     for i in args.chapters:
-        chapters.append(all_chapters[i - 1])
+        chapters.append(all_chapters[i])
 
-    main(chapters, args.outfile)
+    main(chapters, args.outfile, args.debug)
