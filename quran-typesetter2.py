@@ -73,7 +73,7 @@ class Document:
 
         logger.info("Breaking text into lines…")
 
-        lines = LineList(self)
+        lines = []
         for chapter in self.chapters:
             lines.extend(self._process_chapter(chapter))
 
@@ -84,25 +84,17 @@ class Document:
 
         logger.info("Breaking lines into pages…")
 
+        npages = len(lines) // self.lines_per_page
+        if len(lines) % self.lines_per_page:
+            npages += 1
+
         pages = [Page(self, [], 1)]
-        lengths = [self.leading * self.lines_per_page]
-        breaks = lines.compute_breakpoints(lengths)
-        assert breaks[-1] == len(lines) - 1
-
-        start = 0
-        for i, breakpoint in enumerate(breaks[1:]):
-            ratio = lines.compute_adjustment_ratio(start, breakpoint, i,
-                                                   lengths)
-
+        for i in range(npages):
             page = Page(self, [], len(pages) + 1)
-            for j in range(start, breakpoint):
-                line = lines[j]
-                if line.is_glue():
-                    line.height = line.compute_width(ratio)
-                page.lines.append(line)
-
+            start = i * self.lines_per_page
+            end = min((i + 1) * self.lines_per_page, len(lines))
+            page.lines = lines[start:end]
             pages.append(page)
-            start = breakpoint + 1
 
         return pages
 
@@ -119,7 +111,7 @@ class Document:
         lengths = [self.text_width]
         text = ""
         if chapter.opening:
-            text = "بسمِ الله الرَحمنِ الرحيمِ. "
+            text = "بسمِ الله الرَحمنِ الرحيمِ؞ "
         nodes = self.shaper.shape_paragraph(text + chapter.text)
         breaks = nodes.compute_breakpoints(lengths, tolerance=4, looseness=10)
         #assert breaks[-1] == len(nodes) - 1
@@ -139,12 +131,8 @@ class Document:
                 boxes.append(box)
 
             lines.append(Line(self, boxes))
-            lines.append(LineGlue(self))
 
             start = breakpoint + 1
-
-        # Allow stretching the glue between chapters.
-        lines[-1].stretch = self.leading
 
         return lines
 
@@ -458,15 +446,6 @@ class Box(linebreak.Box):
             cr.rectangle(qh.Rect(pos.x, pos.y, width, -self.doc.leading))
             cr.stroke()
             cr.restore()
-
-
-class LineGlue(Glue):
-    def __init__(self, doc, height=0, stretch=0, shrink=0):
-        super().__init__(doc, height, stretch, shrink)
-        self.height = self.width
-
-    def draw(self, cr, pos, width=0):
-        pass
 
 
 class Line(linebreak.Box):
