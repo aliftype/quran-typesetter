@@ -2894,6 +2894,15 @@ class Blob :
             result
     #end create_for_array
 
+    if hasattr(hb, "hb_blob_create_from_file") :
+        @classmethod
+        def create_from_file(celf, filename) :
+            result = celf(hb.hb_blob_create_from_file(filename.encode("utf-8")))
+            return \
+                result
+        #end create_from_file
+    #end if
+
     def create_sub(self, offset, length) :
         "creates a sub-Blob spanning the specified range of bytes in the parent." \
         " Child inherits parent’s memory mode, but Parent is made immutable."

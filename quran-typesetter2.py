@@ -9,7 +9,6 @@ import linebreak
 
 from number import format_number
 
-ft = qh.get_ft_lib()
 
 logging.basicConfig(format="%(asctime)s - %(message)s")
 logger = logging.getLogger("typesetter")
@@ -31,7 +30,7 @@ class Document:
 
         # Settings
         # The defaults here roughly match “the 12-lines Mushaf”.
-        self.body_font        = "Raqq"
+        self.body_font        = "Raqq.ttf"
         self.body_font_size   = 77
         self.lines_per_page   = 5
         self.leading          = 102
@@ -43,16 +42,12 @@ class Document:
 
         self.text_start_pos = self.text_width + (self.page_width - self.text_width) / 2
 
-        # Cache for shaped words.
         self.shaper = Shaper(self)
 
         self.surface = qh.PDFSurface.create(filename, (self.page_width,
                                                        self.page_height))
-        # Create a new FreeType face for Cairo, as sometimes Cairo mangles the
-        # char size, breaking HarfBuzz positions when it uses the same face.
-        ft_face = ft.find_face(self.body_font)
         cr = self.cr = qh.Context.create(self.surface)
-        cr.set_font_face(qh.FontFace.create_for_ft_face(ft_face))
+        cr.set_font_face(qh.FontFace.create_for_file(self.body_font))
         cr.set_font_size(self.body_font_size)
         cr.set_source_colour(qh.Colour.grey(0))
 
@@ -161,38 +156,13 @@ class Shaper:
 
     def __init__(self, doc):
         self.doc = doc
-        ft_face = ft.find_face(doc.body_font)
-        ft_face.set_char_size(size=doc.body_font_size, resolution=qh.base_dpi)
-        self.font = hb.Font.ft_create(ft_face)
+
+        blob = hb.Blob.create_from_file(doc.body_font)
+        face = hb.Face.create(blob, 0, True)
+        self.font = hb.Font.create(face)
+        self.font.scale = (doc.body_font_size, doc.body_font_size)
+
         self.buffer = hb.Buffer.create()
-
-        # Get the natural space width
-        self.space = self.shape_word(" ").width
-
-    def shape_word(self, text):
-        """
-        Shapes a single word and returns the corresponding box. To speed things
-        a bit, we cache the shaped words. We assume all our text is in Arabic
-        script and language. The direction is almost always right-to-left,
-        (we are cheating a bit to avoid doing proper bidirectional text as
-        it is largely superfluous for us here).
-        """
-
-        self.buffer.clear_contents()
-        self.buffer.add_str(text)
-        # Everything is RTL except aya numbers and other digits-only words.
-        if text[0] == "\u06DD":
-            self.buffer.direction = hb.HARFBUZZ.DIRECTION_LTR
-        else:
-            self.buffer.direction = hb.HARFBUZZ.DIRECTION_RTL
-        self.buffer.script = hb.HARFBUZZ.SCRIPT_ARABIC
-        self.buffer.language = hb.Language.from_string("ar")
-
-        hb.shape(self.font, self.buffer)
-
-        box = Box(self.doc, Word(text, self.buffer))
-
-        return box
 
     @staticmethod
     def next_is_nonjoining(text, infos, index):
@@ -202,25 +172,31 @@ class Shaper:
             return category[0] != "L"
         return True
 
-    def shape_verse(self, verse):
-        """
-        Shapes a single verse and returns the corresponding nodes.
-        """
-
+    def shape(self, text, direction):
         buf = self.buffer
 
         buf.clear_contents()
-        buf.add_str(verse)
-        buf.direction = hb.HARFBUZZ.DIRECTION_RTL
+        buf.add_str(text)
+        buf.direction = direction
         buf.script = hb.HARFBUZZ.SCRIPT_ARABIC
         buf.language = hb.Language.from_string("ar")
 
         hb.shape(self.font, self.buffer)
+
+        return buf
+
+    def shape_verse(self, verse, mark=None):
+        """
+        Shapes a single verse and returns the corresponding nodes.
+        """
+
+        buf = self.shape(verse, hb.HARFBUZZ.DIRECTION_RTL)
+
+        nodes = []
         infos = buf.glyph_infos
         positions = buf.glyph_positions
         flip = qh.Vector(1, -1)
         i = len(infos) - 1
-        nodes = []
         while i >= 0:
             # Find all indices with same cluster
             j = i
@@ -264,23 +240,21 @@ class Shaper:
 
             i = j
 
+        if mark:
+            buf = self.shape(mark, hb.HARFBUZZ.DIRECTION_LTR)
+            glyphs, pos = buf.get_glyphs()
+            nodes.append(Box(self.doc, Cluster(mark, glyphs, pos.x)))
+
         return nodes
 
     def shape_paragraph(self, text):
         """
         Converts the text to a list of boxes and glues that the line breaker
-        will work on. We basically split text into words and shape each word
-        separately then put it into a box. We don’t try to preserve the
-        context when shaping the words, as we know that our font does not
-        do anything special around spaces, which in turn allows us to cache
-        the shaped words.
+        will work on.
         """
         nodes = linebreak.NodeList()
 
-        space = self.space
-
-        # Split the text into words, treating space, newline and no-break space
-        # as word separators.
+        # Split the text into verses, using aya mark as seperator.
         verse = ""
         text = text.strip()
         textlen = len(text)
@@ -288,14 +262,13 @@ class Shaper:
         while i < textlen:
             ch = text[i]
             if ch == "\u06DD":
-                nodes.extend(self.shape_verse(verse))
-                verse = ""
                 mark = ch
                 i += 1
                 while i < textlen and text[i] in DIGITS:
                     mark += text[i]
                     i += 1
-                nodes.append(self.shape_word(mark))
+                nodes.extend(self.shape_verse(verse, mark))
+                verse = ""
             else:
                 verse += ch
                 i += 1
