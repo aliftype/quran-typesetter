@@ -1,5 +1,6 @@
 import logging
 import math
+import unicodedata
 
 import harfbuzz as hb
 import qahirah as qh
@@ -193,6 +194,14 @@ class Shaper:
 
         return box
 
+    @staticmethod
+    def next_is_nonjoining(text, infos, index):
+        if index < len(infos):
+            cluster = infos[index].cluster
+            category = unicodedata.category(text[cluster])
+            return category[0] != "L"
+        return True
+
     def shape_verse(self, verse):
         """
         Shapes a single verse and returns the corresponding nodes.
@@ -213,25 +222,45 @@ class Shaper:
         i = len(infos) - 1
         nodes = []
         while i >= 0:
+            # Find all indices with same cluster
             j = i
             while j >= 0 and infos[i].cluster == infos[j].cluster:
                 j -= 1
 
+            # Collect all glyphs in this cluster, iterating backwards to get
+            # glyphs in the visual order.
             pos = qh.Vector(0, 0)
             glyphs = []
             for k in reversed(range(i, j, -1)):
                 glyphs.append(qh.Glyph(infos[k].codepoint, pos + flip * positions[k].offset))
                 pos += flip * positions[k].advance
 
-            text = verse[infos[i].cluster:infos[j + 1].cluster + 1]
+            # The chars in this cluster
+            chars = verse[infos[i].cluster:infos[j].cluster]
 
-            width = pos.x
-            if text == " ":
-                nodes.append(Glue(self.doc, width, 40, 5)) # XXX
-            else:
-                nodes.append(Box(self.doc, Cluster(text, glyphs, width)))
-                if text[0] in RIGH_JOINING and verse[infos[j + 1].cluster + 1] != " ":
-                    nodes.append(Glue(self.doc, 0, 40, 5)) # XXX
+            # We skip space since the font kerns with it and we will turn these
+            # kerns into glue below.
+            if chars != " ":
+                # Find the last non-combining mark char in the string, to check
+                # for joining behaviour.
+                for ch in chars:
+                    if not unicodedata.combining(ch):
+                        base = ch
+
+                if base in RIGH_JOINING or self.next_is_nonjoining(verse, infos, j):
+                    # Get the difference between the original advance width and
+                    # the advance width after OTL.
+                    adv = self.font.get_glyph_h_advance(glyphs[-1].index)
+                    kern = positions[k].advance - qh.Vector(adv, 0)
+
+                    # Re-adjust glyph positions.
+                    glyphs = [qh.Glyph(g.index, g.pos - kern) for g in glyphs]
+                    nodes.append(Box(self.doc, Cluster(chars, glyphs, adv)))
+
+                    # Add glue with the kerning amount with minimal stretch and shrink.
+                    nodes.append(Glue(self.doc, kern.x, kern.x / 10, kern.x / 10))
+                else:
+                    nodes.append(Box(self.doc, Cluster(chars, glyphs, pos.x)))
 
             i = j
 
