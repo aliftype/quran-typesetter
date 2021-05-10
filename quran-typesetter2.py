@@ -231,19 +231,19 @@ class Shaper:
 
                     # Re-adjust glyph positions.
                     glyphs = [qh.Glyph(g.index, g.pos - kern) for g in glyphs]
-                    nodes.append(Box(self.doc, Cluster(chars, glyphs, adv)))
+                    nodes.append(Box(self.doc, chars, glyphs, adv))
 
                     # Add glue with the kerning amount with minimal stretch and shrink.
                     nodes.append(Glue(self.doc, kern.x, kern.x / 8.5, kern.x / 8.5))
                 else:
-                    nodes.append(Box(self.doc, Cluster(chars, glyphs, pos.x)))
+                    nodes.append(Box(self.doc, chars, glyphs, pos.x))
 
             i = j
 
         if mark:
             buf = self.shape(mark, hb.HARFBUZZ.DIRECTION_LTR)
             glyphs, pos = buf.get_glyphs()
-            nodes.append(Box(self.doc, Cluster(mark, glyphs, pos.x)))
+            nodes.append(Box(self.doc, mark, glyphs, pos.x))
 
         return nodes
 
@@ -298,8 +298,6 @@ class Page:
             cr.show_page()
             return
 
-        self.strip()
-
         lines = self.lines
         pos = qh.Vector(0, self.doc.top_margin)
         for i, line in enumerate(lines):
@@ -308,92 +306,6 @@ class Page:
             pos.y += line.height
 
         cr.show_page()
-
-    def strip(self):
-        while not self.lines[-1].is_box():
-            self.lines.pop()
-
-class Word:
-    """Class representing a shaped word."""
-
-    def __init__(self, text, buf):
-        self.text = text
-
-        glyphs, pos = buf.get_glyphs()
-        self.glyphs = glyphs
-        self.width = pos.x
-        self.clusters = [(len(text), len(glyphs))]
-
-
-class Cluster:
-    """Class representing a shaped cluster."""
-
-    def __init__(self, text, glyphs, width):
-        self.text = text
-        self.glyphs = glyphs
-        self.width = width
-        self.clusters = [(len(text), len(glyphs))]
-
-
-class LineList(linebreak.NodeList):
-
-    def __init__(self, doc):
-        super().__init__()
-        self.doc = doc
-
-    def compute_breakpoints(self, line_lengths):
-        # Copied from compute_breakpoints() since compute_adjustment_ratio()
-        # needs them.
-        self.sum_width = {}
-        self.sum_shrink = {}
-        self.sum_stretch = {}
-        width_sum = shrink_sum = stretch_sum = 0
-        for i, node in enumerate(self):
-            self.sum_width[i] = width_sum
-            self.sum_shrink[i] = shrink_sum
-            self.sum_stretch[i] = stretch_sum
-
-            width_sum += node.height
-            shrink_sum += node.shrink
-            stretch_sum += node.stretch
-
-        # Calculate line breaks.
-        # XXX: This seems rather hackish, clean it up!
-        breaks = [0]
-        height = 0
-        last = 0
-        i = 0
-        while i < len(self):
-            line = len(breaks)
-            length = line_lengths[line if line < len(line_lengths) else -1]
-
-            node = self[i]
-            if node.is_box() or node.is_glue():
-                height += node.height
-
-            if not node.is_box():
-                if height > length:
-                    breaks.append(last)
-                    height = 0
-                    i = last
-                elif height == length:
-                    breaks.append(i)
-                    height = 0
-                else:
-                    last = i
-            i += 1
-
-        if breaks[-1] != len(self) - 1:
-            breaks.append(len(self) - 1)
-
-        # Check that we are not overflowing the page, i.e. we don’t have more
-        # lines per page (plus intervening glue) than we should.
-        last = 0
-        for i in breaks[1:]:
-            assert i - last <= self.doc.lines_per_page * 2, (i, i - last)
-            last = i
-
-        return breaks
 
 
 class Glue(linebreak.Glue):
@@ -431,15 +343,19 @@ class Penalty(linebreak.Penalty):
 class Box(linebreak.Box):
     """Class representing a word."""
 
-    def __init__(self, doc, word):
-        super().__init__(word.width, word)
+    def __init__(self, doc, text, glyphs, width, stretch=0, shrink=0):
+        super().__init__(width, stretch, shrink)
         self.doc = doc
+        self.text = text
+        self.glyphs = glyphs
 
     def draw(self, cr, pos):
         cr.save()
         cr.translate(pos)
-        word = self.data
-        cr.show_text_glyphs(word.text, word.glyphs, word.clusters, 0)
+        text = self.text
+        glyphs = self.glyphs
+        clusters = [(len(text), len(glyphs))]
+        cr.show_text_glyphs(text, glyphs, clusters, 0)
         cr.restore()
         if self.doc.debug:
             width = self.width
@@ -451,13 +367,12 @@ class Box(linebreak.Box):
             cr.restore()
 
 
-class Line(linebreak.Box):
+class Line:
     """Class representing a line of text."""
 
     def __init__(self, doc, boxes):
-        super().__init__(doc.leading)
         self.doc = doc
-        self.height = self.width
+        self.height = doc.leading
         self.boxes = boxes
 
     def draw(self, cr, pos):
@@ -480,7 +395,6 @@ class Heading(Line):
 
     def __init__(self, doc, boxes):
         super().__init__(doc, boxes)
-        self.height = doc.leading
 
     def draw(self, cr, pos):
         cr.save()

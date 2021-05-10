@@ -52,27 +52,11 @@ class Box:
     fixed width that doesn't change.
     """
 
-    def __init__(self, width, data=None):
-        self.data = data
-        self.width = width
-        self.stretch = self.shrink = 0
+    def __init__(self, width, stretch=0, shrink=0):
+        self.width, self.stretch, self.shrink = width, stretch, shrink
         self.penalty = 0
         self.flagged = 0
-
-    def is_glue(self):         return False
-    def is_box(self):          return True
-    def is_penalty(self):      return False
-    def is_forced_break(self): return False
-
-class Glue:
-    """Class representing a bit of glue.  Glue has a preferred width,
-    but it can stretch up to an additional distance, and can shrink
-    by a certain amount.  Line breaks can be placed at any point where
-    glue immediately follows a box.
-    """
-
-    def __init__(self, width, stretch, shrink):
-        self.width, self.stretch, self.shrink = width, stretch, shrink
+        self.isglue = False
 
     def compute_width(self, r):
         """Return how long this glue should be, for the given adjustment
@@ -81,10 +65,21 @@ class Glue:
         if r < 0: return self.width + r*self.shrink
         else:     return self.width + r*self.stretch
 
-    def is_glue(self):         return True
-    def is_box(self):          return False
+    def is_glue(self):         return self.isglue
+    def is_box(self):          return not self.isglue
     def is_penalty(self):      return False
     def is_forced_break(self): return False
+
+class Glue(Box):
+    """Class representing a bit of glue.  Glue has a preferred width,
+    but it can stretch up to an additional distance, and can shrink
+    by a certain amount.  Line breaks can be placed at any point where
+    glue immediately follows a box.
+    """
+
+    def __init__(self, *args):
+        super().__init__(*args)
+        self.isglue = True
 
 class Penalty:
     """Class representing a penalty.  Negative penalty values
@@ -285,7 +280,7 @@ class NodeList(list):
         for i in range(m):
             node = self[i]
             w[i] = node.width
-            if node.is_glue():
+            if node.is_glue() or node.is_box():
                 y[i] = node.stretch
                 z[i] = node.shrink
             elif node.is_penalty():
@@ -454,70 +449,3 @@ class NodeList(list):
             A = A.previous
         breaks.reverse()
         return breaks
-
-
-# Simple test code.
-if __name__ == '__main__':
-    text = """Writing this summary was difficult, because there were no large themes
-    in the last two weeks of discussion.  Instead there were lots and lots
-    of small items; as the release date for 2.0b1 nears, people are
-    concentrating on resolving outstanding patches, fixing bugs, and
-    making last-minute tweaks.
-    Computes a Adler-32 checksum of string.  (An Adler-32
-    checksum is almost as reliable as a CRC32 but can be computed much
-    more quickly.)  If value is present, it is used as the
-    starting value of the checksum; otherwise, a fixed default value is
-    used.  This allows computing a running checksum over the
-    concatenation of several input strings.  The algorithm is not
-    cryptographically strong, and should not be used for
-    authentication or digital signatures."""
-    text = ' '.join(text.split())
-
-    line_width = 100                    # Line width to use for formatting
-    full_justify = False                # If True, do full justification
-    # Turn chunk of text into an NodeList.
-    L = NodeList()
-    for ch in text:
-        if ch in ' \n':
-            # Append interword space -- 2 units +/- 1
-            L.append( Glue(2,1,1) )
-        elif ch == '@':
-            # Append forced break
-            L.append( Penalty(0, -INFINITY) )
-
-        else:
-            # All characters are 1 unit wide
-            b = Box(1, ch)
-            L.append( b )
-
-    # Append closing penalty and glue
-    L.add_closing_penalty()
-
-    # Compute the breakpoints
-    line_lengths = [line_width]
-    line_lengths = range(120, 20, -10)
-    breaks = L.compute_breakpoints( line_lengths,
-                                    tolerance = 2)
-    print(breaks, len(L))
-
-    assert breaks[0] == 0
-    line_start = 0
-    line = 0
-    for breakpoint in breaks[1:]:
-        r = L.compute_adjustment_ratio(line_start, breakpoint, line, line_lengths)
-        line = line + 1
-        for i in range(line_start, breakpoint):
-            node = L[i]
-            if node.is_glue():
-                if full_justify:
-                    width = int(node.compute_width(r))
-                else: width = 1
-                sys.stdout.write(' '*width)
-
-            elif hasattr(node, 'data'):
-                sys.stdout.write(node.data)
-
-        line_start = breakpoint + 1
-        sys.stdout.write('\n')
-
-    print
