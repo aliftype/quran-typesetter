@@ -360,8 +360,26 @@ class Box(linebreak.Box):
         clusters = [(len(text), len(glyphs))]
         if self.width != self.origwidth:
             cr.scale((self.width / self.origwidth, 1))
-        cr.show_text_glyphs(text, glyphs, clusters, 0)
+
+        face = self.doc.shaper.font.face
+        colors = face.ot_colour_palette_get_colours(0)
+
+        for glyph in glyphs:
+            layers = face.ot_colour_glyph_get_layers(glyph.index)
+            if layers:
+                for layer in layers:
+                    color = colors[layer.colour_index]
+                    color = [hb.HARFBUZZ.colour_get_red(color), hb.HARFBUZZ.colour_get_green(color), hb.HARFBUZZ.colour_get_blue(color), hb.HARFBUZZ.colour_get_alpha(color)]
+                    color = [c / 255 for c in color]
+                    lglyph = qh.Glyph(layer.glyph, glyph.pos)
+                    cr.save()
+                    cr.set_source_colour(color)
+                    cr.show_glyphs([lglyph])
+                    cr.restore()
+            else:
+                cr.show_glyphs([glyph])
         cr.restore()
+
         if self.doc.debug:
             cr.save()
             cr.set_line_width(.5)
