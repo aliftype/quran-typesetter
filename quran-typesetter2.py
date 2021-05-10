@@ -110,7 +110,7 @@ class Document:
             text = "بسمِ الله الرَحمنِ الرحيمِ؞ "
         nodes = self.shaper.shape_paragraph(text + chapter.text)
         breaks = nodes.compute_breakpoints(lengths, tolerance=4, looseness=10)
-        #assert breaks[-1] == len(nodes) - 1
+        assert breaks[-1] == len(nodes) - 1
 
         lines = [self._create_heading(chapter)]
 
@@ -122,8 +122,7 @@ class Document:
             boxes = []
             for j in range(start, breakpoint):
                 box = nodes[j]
-                if box.is_glue():
-                    box.width = box.compute_width(ratio)
+                box.width = box.compute_width(ratio)
                 boxes.append(box)
 
             lines.append(Line(self, boxes))
@@ -223,20 +222,24 @@ class Shaper:
                     if not unicodedata.combining(ch):
                         base = ch
 
+                adv = self.font.get_glyph_h_advance(glyphs[-1].index)
+                stretch = shrink = 0
+                if base in ("د", "ك"): # XXX
+                    stretch = shrink = adv / 2
+
                 if base in RIGH_JOINING or self.next_is_nonjoining(verse, infos, j):
                     # Get the difference between the original advance width and
                     # the advance width after OTL.
-                    adv = self.font.get_glyph_h_advance(glyphs[-1].index)
                     kern = positions[k].advance - qh.Vector(adv, 0)
 
                     # Re-adjust glyph positions.
                     glyphs = [qh.Glyph(g.index, g.pos - kern) for g in glyphs]
-                    nodes.append(Box(self.doc, chars, glyphs, adv))
+                    nodes.append(Box(self.doc, chars, glyphs, adv, stretch, shrink))
 
                     # Add glue with the kerning amount with minimal stretch and shrink.
                     nodes.append(Glue(self.doc, kern.x, kern.x / 8.5, kern.x / 8.5))
                 else:
-                    nodes.append(Box(self.doc, chars, glyphs, pos.x))
+                    nodes.append(Box(self.doc, chars, glyphs, pos.x, stretch, shrink))
 
             i = j
 
@@ -318,13 +321,12 @@ class Glue(linebreak.Glue):
 
     def draw(self, cr, pos):
         if self.doc.debug:
-            width = self.width
             cr.save()
-            if width >= self.origwidth:
+            if self.width >= self.origwidth:
                 cr.set_source_colour((0, 1, 0, 0.2))
             else:
                 cr.set_source_colour((1, 0, 0, 0.2))
-            cr.rectangle(qh.Rect(pos.x, pos.y, width, -self.doc.leading))
+            cr.rectangle(qh.Rect(pos.x, pos.y, self.width, -self.doc.leading))
             cr.fill()
             cr.restore()
 
@@ -348,6 +350,7 @@ class Box(linebreak.Box):
         self.doc = doc
         self.text = text
         self.glyphs = glyphs
+        self.origwidth = width
 
     def draw(self, cr, pos):
         cr.save()
@@ -355,15 +358,24 @@ class Box(linebreak.Box):
         text = self.text
         glyphs = self.glyphs
         clusters = [(len(text), len(glyphs))]
+        if self.width != self.origwidth:
+            cr.scale((self.width / self.origwidth, 1))
         cr.show_text_glyphs(text, glyphs, clusters, 0)
         cr.restore()
         if self.doc.debug:
-            width = self.width
             cr.save()
             cr.set_line_width(.5)
-            cr.set_source_colour((0, 0, 1, 0.2))
-            cr.rectangle(qh.Rect(pos.x, pos.y, width, -self.doc.leading))
-            cr.stroke()
+            if self.width > self.origwidth:
+                cr.set_source_colour((0, 1, 0, 0.2))
+            elif self.width < self.origwidth:
+                cr.set_source_colour((1, 0, 0, 0.2))
+            else:
+                cr.set_source_colour((0, 0, 1, 0.2))
+            cr.rectangle(qh.Rect(pos.x, pos.y, self.width, -self.doc.leading))
+            if self.width != self.origwidth:
+                cr.fill()
+            else:
+                cr.stroke()
             cr.restore()
 
 

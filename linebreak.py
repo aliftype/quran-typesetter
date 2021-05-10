@@ -97,6 +97,9 @@ class Penalty:
         self.flagged = flagged
         self.stretch = self.shrink = 0
 
+    def compute_width(self, r):
+        return self.width
+
     def is_glue(self):         return False
     def is_box(self):          return False
     def is_penalty(self):      return True
@@ -280,12 +283,10 @@ class NodeList(list):
         for i in range(m):
             node = self[i]
             w[i] = node.width
-            if node.is_glue() or node.is_box():
-                y[i] = node.stretch
-                z[i] = node.shrink
-            elif node.is_penalty():
-                p[i] = node.penalty
-                f[i] = node.flagged
+            y[i] = node.stretch
+            z[i] = node.shrink
+            p[i] = node.penalty
+            f[i] = node.flagged
 
         # Precompute the running sums of width, stretch, and shrink
         # (W,Y,Z in the original paper).  These make it easy to measure the
