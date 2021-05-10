@@ -20,24 +20,24 @@ P_STR = "\u06E9"
 
 class Document:
     """Class representing the main document and holding document-wide settings
-       and state."""
+    and state."""
 
     def __init__(self, chapters, filename, decorations=True):
         logger.info("Initializing the document: %s", filename)
 
         # Settungs
         # The defaults here roughly match “the 12-lines Mushaf”.
-        self.body_font        = "Amiri Quran"
-        self.body_font_size   = 11.5
-        self.lines_per_page   = 12
-        self.leading          = 29  # ~0.4in
-        self.text_widths      = [205] # ~2.84in
-        self.page_width       = 396 # 5.5in
-        self.page_height      = 540 # 7.5in
+        self.body_font = "Amiri Quran"
+        self.body_font_size = 11.5
+        self.lines_per_page = 12
+        self.leading = 29  # ~0.4in
+        self.text_widths = [205]  # ~2.84in
+        self.page_width = 396  # 5.5in
+        self.page_height = 540  # 7.5in
         # From top of page to first baseline.
-        self.top_margin       = 105 # ~1.46
-        self.outer_margin     = 100 # ~1.4in
-        self.page_number_ypos = 460 # ~6.4in
+        self.top_margin = 105  # ~1.46
+        self.outer_margin = 100  # ~1.4in
+        self.page_number_ypos = 460  # ~6.4in
 
         self.page_decorations = decorations
 
@@ -45,8 +45,9 @@ class Document:
         self.word_cache = {}
         self.shaper = Shaper(self)
 
-        self.surface = qh.PDFSurface.create(filename, (self.page_width,
-                                                       self.page_height))
+        self.surface = qh.PDFSurface.create(
+            filename, (self.page_width, self.page_height)
+        )
         # Create a new FreeType face for Cairo, as sometimes Cairo mangles the
         # char size, breaking HarfBuzz positions when it uses the same face.
         ft_face = ft.find_face(self.body_font)
@@ -69,10 +70,10 @@ class Document:
         line = self.lines_per_page - 1
         text_width = self.get_text_width(line)
         pos.x = self.get_text_start_pos(page, line)
-        pos.x -= text_width/2
+        pos.x -= text_width / 2
 
         # Center the box around the position
-        pos.x -= width/2
+        pos.x -= width / 2
 
         return pos
 
@@ -83,7 +84,7 @@ class Document:
             return self.outer_margin + self.get_text_width(line)
 
     def get_side_mark_pos(self, page, line, width):
-        x = self.outer_margin/2 - width/2
+        x = self.outer_margin / 2 - width / 2
         if page.number % 2 == 0:
             x += self.get_text_start_pos(page, line)
         return x
@@ -122,8 +123,7 @@ class Document:
 
         start = 0
         for i, breakpoint in enumerate(breaks[1:]):
-            ratio = lines.compute_adjustment_ratio(start, breakpoint, i,
-                                                   lengths)
+            ratio = lines.compute_adjustment_ratio(start, breakpoint, i, lengths)
 
             page = Page(self, [], len(pages) + 1)
             for j in range(start, breakpoint):
@@ -162,8 +162,7 @@ class Document:
 
         start = 0
         for i, breakpoint in enumerate(breaks[1:]):
-            ratio = nodes.compute_adjustment_ratio(start, breakpoint, i,
-                                                   lengths)
+            ratio = nodes.compute_adjustment_ratio(start, breakpoint, i, lengths)
 
             boxes = []
             for j in range(start, breakpoint):
@@ -242,7 +241,9 @@ class Shaper:
                 self.buffer.direction = hb.HARFBUZZ.DIRECTION_RTL
             self.buffer.script = hb.HARFBUZZ.SCRIPT_ARABIC
             self.buffer.language = hb.Language.from_string("ar")
-            self.buffer.cluster_level = hb.HARFBUZZ.BUFFER_CLUSTER_LEVEL_MONOTONE_CHARACTERS
+            self.buffer.cluster_level = (
+                hb.HARFBUZZ.BUFFER_CLUSTER_LEVEL_MONOTONE_CHARACTERS
+            )
 
             hb.shape(self.font, self.buffer)
 
@@ -278,7 +279,9 @@ class Shaper:
         text = text.strip()
         textlen = len(text)
         for i, ch in enumerate(text):
-            if ch == "\u00A0" and unicodedata.combining(text[i + 1] if i < textlen else ""):
+            if ch == "\u00A0" and unicodedata.combining(
+                text[i + 1] if i < textlen else ""
+            ):
                 word += ch
             elif ch in (" ", "\u00A0"):
                 nodes.append(self.shape_word(word))
@@ -287,11 +290,11 @@ class Shaper:
                 if ch == "\u00A0":
                     nodes.append(Penalty(self.doc, 0, linebreak.INFINITY))
 
-                nodes.append(Glue(self.doc, space, space/2, space/1.5))
+                nodes.append(Glue(self.doc, space, space / 2, space / 1.5))
                 word = ""
             else:
                 word += ch
-        nodes.append(self.shape_word(word)) # last word
+        nodes.append(self.shape_word(word))  # last word
 
         nodes.add_closing_penalty()
 
@@ -333,8 +336,9 @@ class Page:
             text_width = self.doc.get_text_width(i)
             line.draw(cr, pos, text_width)
             if line.get_quarter() or line.get_prostration():
-                self._show_quarter(line, line.get_quarter(),
-                                   line.get_prostration(), pos.y)
+                self._show_quarter(
+                    line, line.get_quarter(), line.get_prostration(), pos.y
+                )
             pos.y += line.height
 
         # Show page number.
@@ -346,7 +350,7 @@ class Page:
         if self.doc.page_decorations:
             o = 8
             x = self.doc.get_text_start_pos(self, 0) + o
-            y = self.doc.top_margin - self.doc.leading/2 - o
+            y = self.doc.top_margin - self.doc.leading / 2 - o
             w = self.doc.get_text_width(0) + o * 2
             h = self.doc.leading * self.doc.lines_per_page + o
 
@@ -387,20 +391,20 @@ class Page:
                 boxes.append(shaper.shape_word("الحزب"))
             else:
                 # A group…
-                group = format_number(quarter/4 + 1)
+                group = format_number(quarter / 4 + 1)
                 if quarter % 8:
                     # … without a part.
                     boxes.append(shaper.shape_word("حزب"))
                     boxes.append(shaper.shape_word(group))
                 else:
                     # … with a part.
-                    part = format_number(quarter/8 + 1)
+                    part = format_number(quarter / 8 + 1)
                     # XXX: [::-1] is a hack to get the numbers LTR
                     boxes.append(shaper.shape_word("حزب %s" % group[::-1]))
                     boxes.append(shaper.shape_word("جزء %s" % part[::-1]))
 
         # We want the text to be smaller than the body size…
-        scale = .8
+        scale = 0.8
         # … and the leading to be tighter.
         leading = self.doc.body_font_size
 
@@ -408,10 +412,10 @@ class Page:
         h = leading * len(boxes)
         x = self.doc.get_side_mark_pos(self, line, w)
         # Center the boxes vertically around the line.
-        y -= h * scale/2
+        y -= h * scale / 2
         for box in boxes:
             # Center the box horizontally relative to the others
-            offset = (w - box.width) * scale/2
+            offset = (w - box.width) * scale / 2
 
             self.cr.save()
             self.cr.translate((x + offset, y))
@@ -424,6 +428,7 @@ class Page:
     def strip(self):
         while not self.lines[-1].is_box():
             self.lines.pop()
+
 
 class Word:
     """Class representing a shaped word."""
@@ -468,7 +473,6 @@ class Word:
 
 
 class LineList(linebreak.NodeList):
-
     def __init__(self, doc):
         super().__init__()
         self.doc = doc
@@ -621,7 +625,7 @@ class Line(linebreak.Box):
         width = sum([box.width for box in self.boxes])
         # Center lines not equal to text width.
         if not math.isclose(width, text_width):
-            pos.x -= (text_width - width)/2
+            pos.x -= (text_width - width) / 2
 
         for box in self.boxes:
             # We start drawing from the right edge of the text block,
@@ -643,17 +647,17 @@ class Heading(Line):
         self.height = doc.leading * 1.8
 
     def draw(self, cr, pos, width):
-        offset = self.doc.leading/2
+        offset = self.doc.leading / 2
         height = self.height - offset
 
         linepos = qh.Vector(pos.x, pos.y)
         for line in self.boxes:
             line.draw(cr, linepos, width)
             linepos.x = pos.x
-            linepos.y += line.height - offset/1.2
+            linepos.y += line.height - offset / 1.2
 
         cr.save()
-        cr.set_line_width(.5)
+        cr.set_line_width(0.5)
         cr.move_to((pos.x, pos.y - offset))
         cr.rectangle(qh.Rect(pos.x - width, pos.y - offset, width, height))
         cr.stroke()
@@ -700,9 +704,11 @@ def read_data(datadir):
 
     return chapters
 
+
 def main(chapters, filename, decorations):
     document = Document(chapters, filename, decorations)
     document.save()
+
 
 if __name__ == "__main__":
     import argparse
@@ -710,20 +716,33 @@ if __name__ == "__main__":
     import sys
 
     parser = argparse.ArgumentParser(description="Quran Typesetter.")
-    parser.add_argument("datadir", metavar="DATADIR",
-            help="Directory containing input files to process")
-    parser.add_argument("outfile", metavar="OUTFILE",
-            help="Output file")
-    parser.add_argument("--chapters", "-c", metavar="N", nargs="*", type=int,
-            choices=range(1, 115), default=range(1, 115),
-            help="Which chapters to process (Default: all)")
-    parser.add_argument("--no-decorations", "-d", action="store_false",
-            dest="decorations",
-            help="Don’t draw page decorations")
-    parser.add_argument("--quite", "-q", action="store_true",
-            help="Don’t print normal messages")
-    parser.add_argument("--verbose", "-v", action="store_true",
-            help="Print verbose messages")
+    parser.add_argument(
+        "datadir", metavar="DATADIR", help="Directory containing input files to process"
+    )
+    parser.add_argument("outfile", metavar="OUTFILE", help="Output file")
+    parser.add_argument(
+        "--chapters",
+        "-c",
+        metavar="N",
+        nargs="*",
+        type=int,
+        choices=range(1, 115),
+        default=range(1, 115),
+        help="Which chapters to process (Default: all)",
+    )
+    parser.add_argument(
+        "--no-decorations",
+        "-d",
+        action="store_false",
+        dest="decorations",
+        help="Don’t draw page decorations",
+    )
+    parser.add_argument(
+        "--quite", "-q", action="store_true", help="Don’t print normal messages"
+    )
+    parser.add_argument(
+        "--verbose", "-v", action="store_true", help="Print verbose messages"
+    )
 
     args = parser.parse_args()
 

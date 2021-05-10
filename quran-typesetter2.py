@@ -21,7 +21,7 @@ RIGH_JOINING = ("ا", "آ", "أ", "إ", "د", "ذ", "ر", "ز", "و", "ؤ")
 
 class Document:
     """Class representing the main document and holding document-wide settings
-       and state."""
+    and state."""
 
     def __init__(self, chapters, filename, debug):
         logger.info("Initializing the document: %s", filename)
@@ -30,22 +30,23 @@ class Document:
 
         # Settings
         # The defaults here roughly match “the 12-lines Mushaf”.
-        self.body_font        = "Raqq.ttf"
-        self.body_font_size   = 125
-        self.lines_per_page   = 5
-        self.leading          = 102
-        self.text_width       = 717
-        self.page_width       = 1024
-        self.page_height      = 755
+        self.body_font = "Raqq.ttf"
+        self.body_font_size = 125
+        self.lines_per_page = 5
+        self.leading = 102
+        self.text_width = 717
+        self.page_width = 1024
+        self.page_height = 755
         # From top of page to first baseline.
-        self.top_margin       = 193
+        self.top_margin = 193
 
         self.text_start_pos = self.text_width + (self.page_width - self.text_width) / 2
 
         self.shaper = Shaper(self)
 
-        self.surface = qh.PDFSurface.create(filename, (self.page_width,
-                                                       self.page_height))
+        self.surface = qh.PDFSurface.create(
+            filename, (self.page_width, self.page_height)
+        )
         cr = self.cr = qh.Context.create(self.surface)
         cr.set_font_face(qh.FontFace.create_for_file(self.body_font))
         cr.set_font_size(self.body_font_size)
@@ -116,8 +117,7 @@ class Document:
 
         start = 0
         for i, breakpoint in enumerate(breaks[1:]):
-            ratio = nodes.compute_adjustment_ratio(start, breakpoint, i,
-                                                   lengths)
+            ratio = nodes.compute_adjustment_ratio(start, breakpoint, i, lengths)
 
             boxes = []
             for j in range(start, breakpoint):
@@ -207,11 +207,13 @@ class Shaper:
             pos = qh.Vector(0, 0)
             glyphs = []
             for k in reversed(range(i, j, -1)):
-                glyphs.append(qh.Glyph(infos[k].codepoint, pos + flip * positions[k].offset))
+                glyphs.append(
+                    qh.Glyph(infos[k].codepoint, pos + flip * positions[k].offset)
+                )
                 pos += flip * positions[k].advance
 
             # The chars in this cluster
-            chars = verse[infos[i].cluster:infos[j].cluster]
+            chars = verse[infos[i].cluster : infos[j].cluster]
 
             # We skip space since the font kerns with it and we will turn these
             # kerns into glue below.
@@ -224,7 +226,7 @@ class Shaper:
 
                 adv = self.font.get_glyph_h_advance(glyphs[-1].index)
                 stretch = shrink = 0
-                if base in ("د", "ك"): # XXX
+                if base in ("د", "ك"):  # XXX
                     stretch = shrink = adv / 2
 
                 if base in RIGH_JOINING or self.next_is_nonjoining(verse, infos, j):
@@ -369,7 +371,12 @@ class Box(linebreak.Box):
             if layers:
                 for layer in layers:
                     color = colors[layer.colour_index]
-                    color = [hb.HARFBUZZ.colour_get_red(color), hb.HARFBUZZ.colour_get_green(color), hb.HARFBUZZ.colour_get_blue(color), hb.HARFBUZZ.colour_get_alpha(color)]
+                    color = [
+                        hb.HARFBUZZ.colour_get_red(color),
+                        hb.HARFBUZZ.colour_get_green(color),
+                        hb.HARFBUZZ.colour_get_blue(color),
+                        hb.HARFBUZZ.colour_get_alpha(color),
+                    ]
                     color = [c / 255 for c in color]
                     lglyph = qh.Glyph(layer.glyph, glyph.pos)
                     cr.save()
@@ -382,7 +389,7 @@ class Box(linebreak.Box):
 
         if self.doc.debug:
             cr.save()
-            cr.set_line_width(.5)
+            cr.set_line_width(0.5)
             if self.width > self.origwidth:
                 cr.set_source_colour((0, 1, 0, 0.2))
             elif self.width < self.origwidth:
@@ -428,7 +435,7 @@ class Heading(Line):
 
     def draw(self, cr, pos):
         cr.save()
-        cr.set_source_colour((0.83, 0.68, 0.21)) # XXX
+        cr.set_source_colour((0.83, 0.68, 0.21))  # XXX
         super().draw(cr, pos)
         cr.restore()
 
@@ -461,9 +468,11 @@ def read_data(datadir):
 
     return chapters
 
+
 def main(chapters, filename, debug):
     document = Document(chapters, filename, debug)
     document.save()
+
 
 if __name__ == "__main__":
     import argparse
@@ -471,19 +480,29 @@ if __name__ == "__main__":
     import sys
 
     parser = argparse.ArgumentParser(description="Quran Typesetter.")
-    parser.add_argument("datadir", metavar="DATADIR",
-            help="Directory containing input files to process")
-    parser.add_argument("outfile", metavar="OUTFILE",
-            help="Output file")
-    parser.add_argument("--chapters", "-c", metavar="N", nargs="*", type=int,
-            choices=range(1, 115), default=range(1, 115),
-            help="Which chapters to process (Default: all)")
-    parser.add_argument("--debug", "-d", action="store_true",
-            help="Draw some debugging aids")
-    parser.add_argument("--quite", "-q", action="store_true",
-            help="Don’t print normal messages")
-    parser.add_argument("--verbose", "-v", action="store_true",
-            help="Print verbose messages")
+    parser.add_argument(
+        "datadir", metavar="DATADIR", help="Directory containing input files to process"
+    )
+    parser.add_argument("outfile", metavar="OUTFILE", help="Output file")
+    parser.add_argument(
+        "--chapters",
+        "-c",
+        metavar="N",
+        nargs="*",
+        type=int,
+        choices=range(1, 115),
+        default=range(1, 115),
+        help="Which chapters to process (Default: all)",
+    )
+    parser.add_argument(
+        "--debug", "-d", action="store_true", help="Draw some debugging aids"
+    )
+    parser.add_argument(
+        "--quite", "-q", action="store_true", help="Don’t print normal messages"
+    )
+    parser.add_argument(
+        "--verbose", "-v", action="store_true", help="Print verbose messages"
+    )
 
     args = parser.parse_args()
 
