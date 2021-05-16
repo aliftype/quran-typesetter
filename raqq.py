@@ -30,7 +30,7 @@ class Document:
 
         # Settings
         # The defaults here roughly match “the 12-lines Mushaf”.
-        self.body_font = "Raqq.ttf"
+        self.body_font = "Raqq.otf"
         self.body_font_size = 125
         self.lines_per_page = 5
         self.leading = 102
