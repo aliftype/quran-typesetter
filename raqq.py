@@ -9,6 +9,8 @@ import linebreak
 
 from number import format_number
 
+ft = qh.get_ft_lib()
+
 
 logging.basicConfig(format="%(asctime)s - %(message)s")
 logger = logging.getLogger("typesetter")
@@ -17,6 +19,12 @@ logger.setLevel(logging.INFO)
 
 DIGITS = ("٠", "١", "٢", "٣", "٤", "٥", "٦", "٧", "٨", "٩")
 RIGH_JOINING = ("ا", "آ", "أ", "إ", "د", "ذ", "ر", "ز", "و", "ؤ")
+
+
+def get_glyph(font, font_data, unicode, user_data):
+    if unicode > 0x10FFFF:
+        return unicode - 0x10FFFF
+    return font.parent.get_nominal_glyph(unicode)
 
 
 class Document:
@@ -48,7 +56,8 @@ class Document:
             filename, (self.page_width, self.page_height)
         )
         cr = self.cr = qh.Context.create(self.surface)
-        cr.set_font_face(qh.FontFace.create_for_file(self.body_font))
+        ft_face = ft.new_face(self.body_font)
+        cr.set_font_face(qh.FontFace.create_for_ft_face(ft_face))
         cr.set_font_size(self.body_font_size)
         cr.set_source_colour(qh.Colour.grey(0))
 
@@ -157,11 +166,68 @@ class Shaper:
         self.doc = doc
 
         blob = hb.Blob.create_from_file(doc.body_font)
-        face = hb.Face.create(blob, 0, True)
-        self.font = hb.Font.create(face)
-        self.font.scale = (doc.body_font_size, doc.body_font_size)
+        self.face = hb.Face.create(blob, 0, True)
+        self.font = self.make_font()
 
         self.buffer = hb.Buffer.create()
+
+        self.shrink_tag = "ASHR"
+        self.stretch_tag = "ASTR"
+
+        self.minfont = self.make_var_font(self.shrink_tag)
+        self.maxfont = self.make_var_font(self.stretch_tag)
+
+
+        self.reshape_font_funcs = hb.FontFuncs.create(True)
+        self.reshape_font_funcs.set_nominal_glyph_func(get_glyph, None, None)
+
+    def make_font(self):
+        font = hb.Font.create(self.face)
+        font.scale = (self.doc.body_font_size, self.doc.body_font_size)
+        return font
+
+    def make_var_font(self, tag):
+        axis = self.face.ot_var_find_axis_info(hb.HARFBUZZ.TAG(tag))
+        font = self.make_font()
+        font.set_variations([hb.Variation.from_string(f"{tag}={axis.max_value}")])
+
+        return font
+
+    def clear_buffer(self, direction=hb.HARFBUZZ.DIRECTION_RTL):
+        buf = self.buffer
+
+        buf.clear_contents()
+        buf.direction = direction
+        buf.script = hb.HARFBUZZ.SCRIPT_ARABIC
+        buf.language = hb.Language.from_string("ar")
+
+        return buf
+
+    def shape(self, text, direction):
+        buf = self.clear_buffer(direction)
+        buf.add_str(text)
+        hb.shape(self.font, buf)
+
+        return buf
+
+    def reshape(self, glyphs, variations):
+        font = self.make_font()
+
+        var = []
+        for tag, value in variations.items():
+            var.append(hb.Variation())
+            var[-1].tag, var[-1].value = tag, value
+
+        font.set_variations(var)
+        font = font.create_sub_font()
+        font.set_funcs(self.reshape_font_funcs, None, None)
+
+        buf = self.clear_buffer()
+        codepoints = [g.index + 0x10FFFF for g in reversed(glyphs)]
+        buf.add_codepoints(codepoints, len(codepoints), 0, len(codepoints))
+        hb.shape(font, buf)
+
+        return buf.get_glyphs()[0]
 
     @staticmethod
     def next_is_nonjoining(text, infos, index):
@@ -170,19 +236,6 @@ class Shaper:
             category = unicodedata.category(text[cluster])
             return category[0] != "L"
         return True
-
-    def shape(self, text, direction):
-        buf = self.buffer
-
-        buf.clear_contents()
-        buf.add_str(text)
-        buf.direction = direction
-        buf.script = hb.HARFBUZZ.SCRIPT_ARABIC
-        buf.language = hb.Language.from_string("ar")
-
-        hb.shape(self.font, self.buffer)
-
-        return buf
 
     def shape_verse(self, verse, mark=None):
         """
@@ -225,9 +278,11 @@ class Shaper:
                         base = ch
 
                 adv = self.font.get_glyph_h_advance(glyphs[-1].index)
-                stretch = shrink = 0
-                if base in ("د", "ك"):  # XXX
-                    stretch = shrink = adv / 2
+                minadv = self.minfont.get_glyph_h_advance(glyphs[-1].index)
+                maxadv = self.maxfont.get_glyph_h_advance(glyphs[-1].index)
+
+                shrink = adv - minadv
+                stretch = maxadv - adv
 
                 if base in RIGH_JOINING or self.next_is_nonjoining(verse, infos, j):
                     # Get the difference between the original advance width and
@@ -357,13 +412,34 @@ class Box(linebreak.Box):
     def draw(self, cr, pos):
         cr.save()
         cr.translate(pos)
-        text = self.text
         glyphs = self.glyphs
-        clusters = [(len(text), len(glyphs))]
-        if self.width != self.origwidth:
-            cr.scale((self.width / self.origwidth, 1))
+        shaper = self.doc.shaper
+        face = shaper.font.face
 
-        face = self.doc.shaper.font.face
+        variations = None
+        if self.width > self.origwidth:
+            delta = self.width - self.origwidth
+            variations = {shaper.stretch_tag: delta / self.stretch * 100}
+        elif self.width < self.origwidth:
+            delta = self.origwidth - self.width
+            variations = {shaper.shrink_tag: delta / self.shrink * 100}
+
+        if variations is not None:
+            glyphs = shaper.reshape(glyphs, variations)
+
+            ft_face = ft.new_face(self.doc.body_font)
+            axes = ft_face.mm_var["axis"]
+            coords = []
+            for axis in axes:
+                tag = axis["tag"]
+                if tag in variations:
+                    coords.append(variations[tag])
+                else:
+                    coords.append(axis["default"])
+
+            ft_face.set_var_design_coordinates(coords)
+            cr.set_font_face(qh.FontFace.create_for_ft_face(ft_face))
+
         colors = face.ot_colour_palette_get_colours(0)
 
         for glyph in glyphs:

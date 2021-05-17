@@ -5220,7 +5220,7 @@ class Font :
         @property
         def var_coords_normalized(self) :
             c_length = ct.c_uint()
-            c_coords = hb.hb_font_get_var_coords_normalized(self._hbobj, ct.bytef(c_length))
+            c_coords = hb.hb_font_get_var_coords_normalized(self._hbobj, ct.byref(c_length))
               # pointer will remain valid as long as variation coords of font are not modified
             return \
                 c_coords[:c_length.value]
