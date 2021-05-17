@@ -377,13 +377,13 @@ class Glue(linebreak.Glue):
         self.doc = doc
 
     def draw(self, cr, pos):
-        if self.doc.debug:
+        if self.doc.debug and self.width != self.origwidth:
             cr.save()
             if self.width >= self.origwidth:
                 cr.set_source_colour((0, 1, 0, 0.2))
             else:
-                cr.set_source_colour((1, 0, 0, 0.2))
-            cr.rectangle(qh.Rect(pos.x, pos.y, self.width, -self.doc.leading))
+                cr.set_source_colour((0, 0, 1, 0.2))
+            cr.rectangle(qh.Rect(pos.x, pos.y, self.width, -5))
             cr.fill()
             cr.restore()
 
@@ -463,20 +463,14 @@ class Box(linebreak.Box):
                 cr.show_glyphs([glyph])
         cr.restore()
 
-        if self.doc.debug:
+        if self.doc.debug and self.width != self.origwidth:
             cr.save()
-            cr.set_line_width(0.5)
             if self.width > self.origwidth:
                 cr.set_source_colour((0, 1, 0, 0.2))
             elif self.width < self.origwidth:
-                cr.set_source_colour((1, 0, 0, 0.2))
-            else:
                 cr.set_source_colour((0, 0, 1, 0.2))
-            cr.rectangle(qh.Rect(pos.x, pos.y, self.width, -self.doc.leading))
-            if self.width != self.origwidth:
-                cr.fill()
-            else:
-                cr.stroke()
+            cr.rectangle(qh.Rect(pos.x, pos.y-self.doc.leading + 30, self.width, 5))
+            cr.fill()
             cr.restore()
 
 
