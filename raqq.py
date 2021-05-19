@@ -297,6 +297,9 @@ class Shaper:
                     nodes.append(Glue(self.doc, kern.x, kern.x / 8.5, kern.x / 8.5))
                 else:
                     nodes.append(Box(self.doc, chars, glyphs, pos.x, stretch, shrink))
+            elif pos.x != 0:
+                # If space is not zero-width, add glue for it.
+                nodes.append(Glue(self.doc, pos.x, pos.x / 8.5, pos.x / 8.5))
 
             i = j
 
