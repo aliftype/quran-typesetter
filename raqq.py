@@ -58,8 +58,7 @@ class Document:
             filename, (self.page_width, self.page_height)
         )
         cr = self.cr = qh.Context.create(self.surface)
-        ft_face = ft.new_face(self.body_font)
-        cr.set_font_face(qh.FontFace.create_for_ft_face(ft_face))
+        cr.set_font_face(self.shaper.make_qahira_face())
         cr.set_font_size(self.body_font_size)
         cr.set_source_colour(qh.Colour.grey(0))
 
@@ -179,6 +178,8 @@ class Shaper:
         self.reshape_font_funcs = hb.FontFuncs.create(True)
         self.reshape_font_funcs.set_nominal_glyph_func(get_glyph, None, None)
 
+        self.cache = {"hb": {}, "ft": {}}
+
     def make_font(self):
         font = hb.Font.create(self.face)
         font.scale = (self.doc.body_font_size, self.doc.body_font_size)
@@ -190,6 +191,24 @@ class Shaper:
         font = self.make_font()
         font.set_variations([hb.Variation.from_string(f"{tag}={axis.max_value}")])
         return font, axis
+
+    def make_qahira_face(self, variations=None):
+        if variations not in self.cache["ft"]:
+            ft_face = ft.new_face(self.doc.body_font)
+            if variations:
+                variation = hb.Variation.from_string(variations)
+                axes = ft_face.mm_var["axis"]
+                coords = []
+                for axis in axes:
+                    tag = axis["tag"]
+                    if tag == variation.tag.decode("ascii"):
+                        coords.append(variation.value)
+                    else:
+                        coords.append(axis["default"])
+
+                ft_face.set_var_design_coordinates(coords)
+            self.cache["ft"][variations] = qh.FontFace.create_for_ft_face(ft_face)
+        return self.cache["ft"][variations]
 
     def clear_buffer(self, direction=hb.HARFBUZZ.DIRECTION_RTL):
         buf = self.buffer
@@ -209,16 +228,15 @@ class Shaper:
         return buf
 
     def reshape(self, glyphs, variations):
-        font = self.make_font()
+        if variations not in self.cache["hb"]:
+            font = self.make_font()
+            font.set_variations([hb.Variation.from_string(variations)])
 
-        var = []
-        for tag, value in variations.items():
-            var.append(hb.Variation())
-            var[-1].tag, var[-1].value = tag, value
-
-        font.set_variations(var)
-        font = font.create_sub_font()
-        font.set_funcs(self.reshape_font_funcs, None, None)
+            font = font.create_sub_font()
+            font.set_funcs(self.reshape_font_funcs, None, None)
+            self.cache["hb"][variations] = font
+        else:
+            font = self.cache["hb"][variations]
 
         buf = self.clear_buffer()
         codepoints = [g.index + GID_OFFSET for g in reversed(glyphs)]
@@ -410,24 +428,11 @@ class Box(linebreak.Box):
 
         if width != self.width:
             axis = shaper.maxaxis if self.ratio > 0 else shaper.minaxis
-            variations = {
-                axis.tag: abs(self.ratio) * (axis.max_value - axis.default_value)
-            }
+            value = abs(self.ratio) * (axis.max_value - axis.default_value)
+            variations = f"{axis.tag}={value}"
 
             glyphs = shaper.reshape(glyphs, variations)
-
-            ft_face = ft.new_face(self.doc.body_font)
-            axes = ft_face.mm_var["axis"]
-            coords = []
-            for axis in axes:
-                tag = axis["tag"]
-                if tag in variations:
-                    coords.append(variations[tag])
-                else:
-                    coords.append(axis["default"])
-
-            ft_face.set_var_design_coordinates(coords)
-            cr.set_font_face(qh.FontFace.create_for_ft_face(ft_face))
+            cr.set_font_face(shaper.make_qahira_face(variations))
 
         colors = face.ot_colour_palette_get_colours(0)
 
