@@ -131,7 +131,7 @@ class Document:
             boxes = []
             for j in range(start, breakpoint):
                 box = nodes[j]
-                box.width = box.compute_width(ratio)
+                box.ratio = ratio
                 boxes.append(box)
 
             lines.append(Line(self, boxes))
@@ -374,19 +374,23 @@ class Page:
 class Glue(linebreak.Glue):
     def __init__(self, doc, width, stretch, shrink):
         super().__init__(width=width, stretch=stretch, shrink=shrink)
-        self.origwidth = width
         self.doc = doc
 
     def draw(self, cr, pos):
-        if self.doc.debug and self.width != self.origwidth:
+        width = self.compute_width()
+        x, y = pos.x - width, pos.y
+
+        if self.doc.debug and width != self.width:
             cr.save()
-            if self.width >= self.origwidth:
+            if self.ratio > 0:
                 cr.set_source_colour((0, 1, 0, 0.2))
             else:
                 cr.set_source_colour((0, 0, 1, 0.2))
-            cr.rectangle(qh.Rect(pos.x, pos.y, self.width, -5))
+            cr.rectangle(qh.Rect(x, y, width, -5))
             cr.fill()
             cr.restore()
+
+        return x
 
 
 class Box(linebreak.Box):
@@ -395,24 +399,23 @@ class Box(linebreak.Box):
         self.doc = doc
         self.text = text
         self.glyphs = glyphs
-        self.origwidth = width
 
     def draw(self, cr, pos):
         cr.save()
-        cr.translate(pos)
         glyphs = self.glyphs
         shaper = self.doc.shaper
         face = shaper.font.face
 
-        variations = None
-        if self.width > self.origwidth:
-            delta = self.width - self.origwidth
-            variations = {shaper.stretch_tag: delta / self.stretch * 100}
-        elif self.width < self.origwidth:
-            delta = self.origwidth - self.width
-            variations = {shaper.shrink_tag: delta / self.shrink * 100}
+        width = self.compute_width()
+        x, y = pos.x - width, pos.y
+        cr.translate((x, y))
 
-        if variations is not None:
+        if width != self.width:
+            if self.ratio > 0:
+                variations = {shaper.stretch_tag: abs(self.ratio) * 100}
+            else:
+                variations = {shaper.shrink_tag: abs(self.ratio) * 100}
+
             glyphs = shaper.reshape(glyphs, variations)
 
             ft_face = ft.new_face(self.doc.body_font)
@@ -451,15 +454,17 @@ class Box(linebreak.Box):
                 cr.show_glyphs([glyph])
         cr.restore()
 
-        if self.doc.debug and self.width != self.origwidth:
+        if self.doc.debug and width != self.width:
             cr.save()
-            if self.width > self.origwidth:
+            if self.ratio > 0:
                 cr.set_source_colour((0, 1, 0, 0.2))
-            elif self.width < self.origwidth:
+            else:
                 cr.set_source_colour((0, 0, 1, 0.2))
-            cr.rectangle(qh.Rect(pos.x, pos.y-self.doc.leading + 30, self.width, 5))
+            cr.rectangle(qh.Rect(x, y-self.doc.leading + 30, width, 5))
             cr.fill()
             cr.restore()
+
+        return x
 
 
 class Line:
@@ -474,11 +479,7 @@ class Line:
         self.strip()
 
         for box in self.boxes:
-            # We start drawing from the right edge of the text block,
-            # and move to the left, thus the subtraction instead of
-            # addition below.
-            pos.x -= box.width
-            box.draw(cr, pos)
+            pos.x = box.draw(cr, pos)
 
     def strip(self):
         while self.boxes and not self.boxes[-1].is_box:

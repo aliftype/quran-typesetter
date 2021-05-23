@@ -52,12 +52,14 @@ class Item:
     def __init__(self, width=0, stretch=0, shrink=0, penalty=0, flagged=0):
         self.width, self.stretch, self.shrink = width, stretch, shrink
         self.penalty, self.flagged = penalty, flagged
+        self.ratio = None
         self.is_box = self.is_glue = self.is_penalty = False
         self._forced_break = None
 
-    def compute_width(self, r):
-        """Return how long this glue should be, for the given adjustment
-        ratio r."""
+    def compute_width(self):
+        r = self.ratio
+        if r is None:
+            return self.width
 
         if r < 0:
             return self.width + r * self.shrink
