@@ -20,10 +20,12 @@ logger.setLevel(logging.INFO)
 DIGITS = ("٠", "١", "٢", "٣", "٤", "٥", "٦", "٧", "٨", "٩")
 RIGH_JOINING = ("ا", "آ", "أ", "إ", "د", "ذ", "ر", "ز", "و", "ؤ")
 
+GID_OFFSET = 0x10FFFF
+
 
 def get_glyph(font, font_data, unicode, user_data):
-    if unicode > 0x10FFFF:
-        return unicode - 0x10FFFF
+    if unicode > GID_OFFSET:
+        return unicode - GID_OFFSET
     return font.parent.get_nominal_glyph(unicode)
 
 
@@ -219,7 +221,7 @@ class Shaper:
         font.set_funcs(self.reshape_font_funcs, None, None)
 
         buf = self.clear_buffer()
-        codepoints = [g.index + 0x10FFFF for g in reversed(glyphs)]
+        codepoints = [g.index + GID_OFFSET for g in reversed(glyphs)]
         buf.add_codepoints(codepoints, len(codepoints), 0, len(codepoints))
         hb.shape(font, buf)
 
