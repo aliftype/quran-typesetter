@@ -128,8 +128,9 @@ class Document:
             page = Page(self, [], len(pages) + 1)
             for j in range(start, breakpoint):
                 line = lines[j]
-                if line.is_glue():
-                    line.height = line.compute_width(ratio)
+                if line.is_glue:
+                    line.ratio = ratio
+                    line.height = line.compute_width()
                 page.lines.append(line)
 
             pages.append(page)
@@ -167,8 +168,9 @@ class Document:
             boxes = []
             for j in range(start, breakpoint):
                 box = nodes[j]
-                if box.is_glue():
-                    box.width = box.compute_width(ratio)
+                if box.is_glue:
+                    box.ratio = ratio
+                    box.width = box.compute_width()
                 boxes.append(box)
 
             lines.append(Line(self, boxes))
@@ -420,13 +422,13 @@ class Page:
             self.cr.save()
             self.cr.translate((x + offset, y))
             self.cr.scale((scale, scale))
-            self.cr.show_glyphs(box.data.glyphs)
+            self.cr.show_glyphs(box.word.glyphs)
             self.cr.restore()
 
             y += leading
 
     def strip(self):
-        while not self.lines[-1].is_box():
+        while not self.lines[-1].is_box:
             self.lines.pop()
 
 
@@ -504,10 +506,10 @@ class LineList(linebreak.NodeList):
             length = line_lengths[line if line < len(line_lengths) else -1]
 
             node = self[i]
-            if node.is_box() or node.is_glue():
+            if node.is_box or node.is_glue:
                 height += node.height
 
-            if not node.is_box():
+            if not node.is_box:
                 if height > length:
                     breaks.append(last)
                     height = 0
@@ -536,7 +538,7 @@ class Glue(linebreak.Glue):
     """Wrapper around linebreak.Glue to hold our common API."""
 
     def __init__(self, doc, width, stretch, shrink):
-        super().__init__(width, stretch, shrink)
+        super().__init__(width=width, stretch=stretch, shrink=shrink)
         self.doc = doc
 
     def draw(self, cr, pos, text_width=0):
@@ -553,7 +555,7 @@ class Penalty(linebreak.Penalty):
     """Wrapper around linebreak.Penalty to hold our common API."""
 
     def __init__(self, doc, width, penalty, flagged=0):
-        super().__init__(width, penalty, flagged)
+        super().__init__(width=width, penalty=penalty, flagged=flagged)
         self.doc = doc
 
     def draw(self, cr, pos, text_width=0):
@@ -570,8 +572,9 @@ class Box(linebreak.Box):
     """Class representing a word."""
 
     def __init__(self, doc, word):
-        super().__init__(word.width, word)
+        super().__init__(width=word.width)
         self.doc = doc
+        self.word = word
         self.quarter = 0
         self.prostration = False
 
@@ -584,7 +587,7 @@ class Box(linebreak.Box):
     def draw(self, cr, pos, text_width=0):
         cr.save()
         cr.translate(pos)
-        word = self.data
+        word = self.word
         if word.backward:
             flags = qh.CAIRO.TEXT_CLUSTER_FLAG_BACKWARD
         else:
@@ -595,7 +598,7 @@ class Box(linebreak.Box):
 
 class LineGlue(Glue):
     def __init__(self, doc, height=0, stretch=0, shrink=0):
-        super().__init__(doc, height, stretch, shrink)
+        super().__init__(doc, width=height, stretch=stretch, shrink=shrink)
         self.height = self.width
 
 
@@ -603,7 +606,7 @@ class Line(linebreak.Box):
     """Class representing a line of text."""
 
     def __init__(self, doc, boxes):
-        super().__init__(doc.leading)
+        super().__init__(width=doc.leading)
         self.doc = doc
         self.height = self.width
         self.boxes = boxes
@@ -635,7 +638,7 @@ class Line(linebreak.Box):
             box.draw(cr, pos)
 
     def strip(self):
-        while not self.boxes[-1].is_box():
+        while not self.boxes[-1].is_box:
             self.boxes.pop()
 
 
