@@ -48,16 +48,12 @@ INFINITY = 1000
 # can go into an NodeList.
 
 
-class Box:
-    """Class representing an unbreakable collection of glyphs.  Boxes have a
-    fixed width that doesn't change.
-    """
-
-    def __init__(self, width, stretch=0, shrink=0):
+class Item:
+    def __init__(self, width=0, stretch=0, shrink=0, penalty=0, flagged=0):
         self.width, self.stretch, self.shrink = width, stretch, shrink
-        self.penalty = 0
-        self.flagged = 0
-        self.isglue = False
+        self.penalty, self.flagged = penalty, flagged
+        self.is_box = self.is_glue = self.is_penalty = False
+        self._forced_break = None
 
     def compute_width(self, r):
         """Return how long this glue should be, for the given adjustment
@@ -68,61 +64,29 @@ class Box:
         else:
             return self.width + r * self.stretch
 
-    def is_glue(self):
-        return self.isglue
-
-    def is_box(self):
-        return not self.isglue
-
-    def is_penalty(self):
-        return False
-
+    @property
     def is_forced_break(self):
-        return False
+        if self._forced_break is None:
+            self._forced_break = self.is_penalty and self.penalty == -INFINITY
+        return self._forced_break
 
 
-class Glue(Box):
-    """Class representing a bit of glue.  Glue has a preferred width,
-    but it can stretch up to an additional distance, and can shrink
-    by a certain amount.  Line breaks can be placed at any point where
-    glue immediately follows a box.
-    """
-
-    def __init__(self, *args):
-        super().__init__(*args)
-        self.isglue = True
+class Box(Item):
+    def __init__(self, **args):
+        super().__init__(**args)
+        self.is_box = True
 
 
-class Penalty:
-    """Class representing a penalty.  Negative penalty values
-    encourage line breaks at a given point, and positive values
-    discourage breaks.  A value of INFINITY either absolutely requires
-    or forbids a break.  Penalties have a width of zero unless a break
-    is taken at the penalty point, at which point the value of the
-    penalty's 'width' attribute is used.
+class Glue(Item):
+    def __init__(self, **args):
+        super().__init__(**args)
+        self.is_glue = True
 
-    """
 
-    def __init__(self, width, penalty, flagged=0):
-        self.width = width
-        self.penalty = penalty
-        self.flagged = flagged
-        self.stretch = self.shrink = 0
-
-    def compute_width(self, r):
-        return self.width
-
-    def is_glue(self):
-        return False
-
-    def is_box(self):
-        return False
-
-    def is_penalty(self):
-        return True
-
-    def is_forced_break(self):
-        return self.penalty == -INFINITY
+class Penalty(Item):
+    def __init__(self, **args):
+        super().__init__(**args)
+        self.is_penalty = True
 
 
 class _BreakNode:
@@ -160,17 +124,17 @@ class NodeList(list):
 
     def add_closing_penalty(self):
         "Add the standard glue and penalty for the end of a paragraph"
-        self.append(Penalty(0, INFINITY, 0))
-        self.append(Glue(0, INFINITY, 0))
-        self.append(Penalty(0, -INFINITY, 1))
+        self.append(Penalty(width=0, penalty=INFINITY, flagged=0))
+        self.append(Glue(width=0, stretch=INFINITY, shrink=0))
+        self.append(Penalty(width=0, penalty=-INFINITY, flagged=1))
 
     def is_feasible_breakpoint(self, i):
         "Return true if position 'i' is a feasible breakpoint."
 
         node = self[i]
-        if node.is_penalty() and node.penalty < INFINITY:
+        if node.is_penalty and node.penalty < INFINITY:
             return True
-        elif i > 0 and node.is_glue() and self[i - 1].is_box():
+        elif i > 0 and node.is_glue and self[i - 1].is_box:
             return True
         else:
             return False
@@ -193,7 +157,7 @@ class NodeList(list):
     def compute_adjustment_ratio(self, pos1, pos2, line, line_lengths):
         "Compute adjustment ratio for the line between pos1 and pos2"
         length = self.measure_width(pos1, pos2)
-        if self[pos2].is_penalty():
+        if self[pos2].is_penalty:
             length = length + self[pos2].width
         if self.debug:
             print("\tline length=", length)
@@ -389,7 +353,7 @@ class NodeList(list):
 
                     # XXX is 'or' really correct here?  This seems to
                     # remove all active nodes on encountering a forced break!
-                    if r < -1 or B.is_forced_break():
+                    if r < -1 or B.is_forced_break:
                         # Deactivate node A
                         if len(active_nodes) == 1:
                             if self.debug:
@@ -405,7 +369,7 @@ class NodeList(list):
                         # Compute demerits and fitness class
                         if p[i] >= 0:
                             demerits = (1 + 100 * abs(r) ** 3 + p[i]) ** 3
-                        elif B.is_forced_break():
+                        elif B.is_forced_break:
                             demerits = (1 + 100 * abs(r) ** 3) ** 2 - p[i] ** 2
                         else:
                             demerits = (1 + 100 * abs(r) ** 3) ** 2

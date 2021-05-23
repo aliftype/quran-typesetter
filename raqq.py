@@ -372,10 +372,8 @@ class Page:
 
 
 class Glue(linebreak.Glue):
-    """Wrapper around linebreak.Glue to hold our common API."""
-
     def __init__(self, doc, width, stretch, shrink):
-        super().__init__(width, stretch, shrink)
+        super().__init__(width=width, stretch=stretch, shrink=shrink)
         self.origwidth = width
         self.doc = doc
 
@@ -391,22 +389,9 @@ class Glue(linebreak.Glue):
             cr.restore()
 
 
-class Penalty(linebreak.Penalty):
-    """Wrapper around linebreak.Penalty to hold our common API."""
-
-    def __init__(self, doc, width, penalty, flagged=0):
-        super().__init__(width, penalty, flagged)
-        self.doc = doc
-
-    def draw(self, cr, pos):
-        pass
-
-
 class Box(linebreak.Box):
-    """Class representing a word."""
-
     def __init__(self, doc, text, glyphs, width, stretch=0, shrink=0):
-        super().__init__(width, stretch, shrink)
+        super().__init__(width=width, stretch=stretch, shrink=shrink)
         self.doc = doc
         self.text = text
         self.glyphs = glyphs
@@ -496,7 +481,7 @@ class Line:
             box.draw(cr, pos)
 
     def strip(self):
-        while self.boxes and not self.boxes[-1].is_box():
+        while self.boxes and not self.boxes[-1].is_box:
             self.boxes.pop()
 
 
