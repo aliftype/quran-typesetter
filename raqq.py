@@ -171,12 +171,8 @@ class Shaper:
 
         self.buffer = hb.Buffer.create()
 
-        self.shrink_tag = "ASHR"
-        self.stretch_tag = "ASTR"
-
-        self.minfont = self.make_var_font(self.shrink_tag)
-        self.maxfont = self.make_var_font(self.stretch_tag)
-
+        self.minfont, self.minaxis = self.make_var_font("ASHR")
+        self.maxfont, self.maxaxis = self.make_var_font("ASTR")
 
         self.reshape_font_funcs = hb.FontFuncs.create(True)
         self.reshape_font_funcs.set_nominal_glyph_func(get_glyph, None, None)
@@ -188,10 +184,10 @@ class Shaper:
 
     def make_var_font(self, tag):
         axis = self.face.ot_var_find_axis_info(hb.HARFBUZZ.TAG(tag))
+        axis.tag = tag
         font = self.make_font()
         font.set_variations([hb.Variation.from_string(f"{tag}={axis.max_value}")])
-
-        return font
+        return font, axis
 
     def clear_buffer(self, direction=hb.HARFBUZZ.DIRECTION_RTL):
         buf = self.buffer
@@ -411,10 +407,10 @@ class Box(linebreak.Box):
         cr.translate((x, y))
 
         if width != self.width:
-            if self.ratio > 0:
-                variations = {shaper.stretch_tag: abs(self.ratio) * 100}
-            else:
-                variations = {shaper.shrink_tag: abs(self.ratio) * 100}
+            axis = shaper.maxaxis if self.ratio > 0 else shaper.minaxis
+            variations = {
+                axis.tag: abs(self.ratio) * (axis.max_value - axis.default_value)
+            }
 
             glyphs = shaper.reshape(glyphs, variations)
 
@@ -460,7 +456,7 @@ class Box(linebreak.Box):
                 cr.set_source_colour((0, 1, 0, 0.2))
             else:
                 cr.set_source_colour((0, 0, 1, 0.2))
-            cr.rectangle(qh.Rect(x, y-self.doc.leading + 30, width, 5))
+            cr.rectangle(qh.Rect(x, y - self.doc.leading + 30, width, 5))
             cr.fill()
             cr.restore()
 
