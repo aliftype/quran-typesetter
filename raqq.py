@@ -1,5 +1,6 @@
 import logging
 import math
+import os
 import unicodedata
 
 import harfbuzz as hb
@@ -11,16 +12,17 @@ from number import format_number
 
 ft = qh.get_ft_lib()
 
-
 logging.basicConfig(format="%(asctime)s - %(message)s")
 logger = logging.getLogger("typesetter")
 logger.setLevel(logging.INFO)
-
 
 DIGITS = ("٠", "١", "٢", "٣", "٤", "٥", "٦", "٧", "٨", "٩")
 RIGH_JOINING = ("ا", "آ", "أ", "إ", "د", "ذ", "ر", "ز", "و", "ؤ")
 
 GID_OFFSET = 0x10FFFF
+
+# Make Cairo produces diff-able PDFs
+os.environ["CAIRO_DEBUG_PDF"] = "1"
 
 
 def get_glyph(font, font_data, unicode, user_data):
