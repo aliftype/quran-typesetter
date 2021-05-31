@@ -166,6 +166,8 @@ class Shaper:
     """Class for turning text into boxes and glue."""
 
     def __init__(self, doc):
+        self.cache = {"hb": {}, "ft": {}}
+
         self.doc = doc
 
         blob = hb.Blob.create_from_file(doc.body_font)
@@ -180,22 +182,29 @@ class Shaper:
         self.reshape_font_funcs = hb.FontFuncs.create(True)
         self.reshape_font_funcs.set_nominal_glyph_func(get_glyph, None, None)
 
-        self.cache = {"hb": {}, "ft": {}}
-
-    def make_font(self):
-        font = hb.Font.create(self.face)
-        font.scale = (self.doc.body_font_size, self.doc.body_font_size)
-        return font
+    def make_font(self, variations=None, funcs=None):
+        cache = self.cache["hb"]
+        key = f"{variations}:{funcs}"
+        if key not in cache:
+            font = hb.Font.create(self.face)
+            font.scale = (self.doc.body_font_size, self.doc.body_font_size)
+            if variations:
+                font.set_variations([hb.Variation.from_string(variations)])
+            if funcs:
+                font = font.create_sub_font()
+                font.set_funcs(funcs, None, None)
+            cache[key] = font
+        return cache[key]
 
     def make_var_font(self, tag):
         axis = self.face.ot_var_find_axis_info(hb.HARFBUZZ.TAG(tag))
         axis.tag = tag
-        font = self.make_font()
-        font.set_variations([hb.Variation.from_string(f"{tag}={axis.max_value}")])
+        font = self.make_font(f"{tag}={axis.max_value}")
         return font, axis
 
     def make_qahira_face(self, variations=None):
-        if variations not in self.cache["ft"]:
+        cache = self.cache["ft"]
+        if variations not in cache:
             ft_face = ft.new_face(self.doc.body_font)
             if variations:
                 variation = hb.Variation.from_string(variations)
@@ -209,8 +218,8 @@ class Shaper:
                         coords.append(axis["default"])
 
                 ft_face.set_var_design_coordinates(coords)
-            self.cache["ft"][variations] = qh.FontFace.create_for_ft_face(ft_face)
-        return self.cache["ft"][variations]
+            cache[variations] = qh.FontFace.create_for_ft_face(ft_face)
+        return cache[variations]
 
     def clear_buffer(self, direction=hb.HARFBUZZ.DIRECTION_RTL):
         buf = self.buffer
@@ -230,16 +239,7 @@ class Shaper:
         return buf
 
     def reshape(self, glyphs, variations):
-        if variations not in self.cache["hb"]:
-            font = self.make_font()
-            font.set_variations([hb.Variation.from_string(variations)])
-
-            font = font.create_sub_font()
-            font.set_funcs(self.reshape_font_funcs, None, None)
-            self.cache["hb"][variations] = font
-        else:
-            font = self.cache["hb"][variations]
-
+        font = self.make_font(variations, self.reshape_font_funcs)
         buf = self.clear_buffer()
         codepoints = [g.index + GID_OFFSET for g in reversed(glyphs)]
         buf.add_codepoints(codepoints, len(codepoints), 0, len(codepoints))
