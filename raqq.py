@@ -380,9 +380,8 @@ class Page:
             return
 
         lines = self.lines
-        pos = qh.Vector(0, self.doc.top_margin)
+        pos = qh.Vector(self.doc.text_start_pos, self.doc.top_margin)
         for i, line in enumerate(lines):
-            pos.x = self.doc.text_start_pos
             line.draw(cr, pos)
             pos.y += line.height
 
@@ -394,7 +393,7 @@ class Glue(linebreak.Glue):
         super().__init__(width=width, stretch=stretch, shrink=shrink)
         self.doc = doc
 
-    def draw(self, cr, pos):
+    def draw(self, cr, pos, drawColorLayers):
         width = self.compute_width()
         x, y = pos.x - width, pos.y
 
@@ -418,7 +417,7 @@ class Box(linebreak.Box):
         self.text = text
         self.glyphs = glyphs
 
-    def draw(self, cr, pos):
+    def draw(self, cr, pos, drawColorLayers):
         cr.save()
         glyphs = self.glyphs
         shaper = self.doc.shaper
@@ -440,7 +439,7 @@ class Box(linebreak.Box):
 
         for glyph in glyphs:
             layers = face.ot_colour_glyph_get_layers(glyph.index)
-            if layers:
+            if layers and drawColorLayers:
                 for layer in layers:
                     color = colors[layer.colour_index]
                     color = [
@@ -455,7 +454,7 @@ class Box(linebreak.Box):
                     cr.set_source_colour(color)
                     cr.show_glyphs([lglyph])
                     cr.restore()
-            else:
+            elif not layers and not drawColorLayers:
                 cr.show_glyphs([glyph])
         cr.restore()
 
@@ -483,8 +482,10 @@ class Line:
     def draw(self, cr, pos):
         self.strip()
 
-        for box in self.boxes:
-            pos.x = box.draw(cr, pos)
+        for drawColorLayers in (False, True):
+            p = qh.Vector(pos.x, pos.y)
+            for box in self.boxes:
+                p.x = box.draw(cr, p, drawColorLayers)
 
     def strip(self):
         while self.boxes and not self.boxes[-1].is_box:
