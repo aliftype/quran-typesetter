@@ -25,12 +25,6 @@ GID_OFFSET = 0x10FFFF
 os.environ["CAIRO_DEBUG_PDF"] = "1"
 
 
-def get_glyph(font, font_data, unicode, user_data):
-    if unicode > GID_OFFSET:
-        return unicode - GID_OFFSET
-    return font.parent.get_nominal_glyph(unicode)
-
-
 class Document:
     """Class representing the main document and holding document-wide settings
     and state."""
@@ -162,11 +156,20 @@ class Chapter:
         return text
 
 
+def _get_glyph(font, font_data, unicode, user_data):
+    if unicode > GID_OFFSET:
+        return unicode - GID_OFFSET
+    return font.parent.get_nominal_glyph(unicode)
+
+
 class Shaper:
     """Class for turning text into boxes and glue."""
 
     def __init__(self, doc):
         self.cache = {"hb": {}, "ft": {}}
+
+        self._font_funcs = hb.FontFuncs.create(True)
+        self._font_funcs.set_nominal_glyph_func(_get_glyph, None, None)
 
         self.doc = doc
 
@@ -178,9 +181,6 @@ class Shaper:
 
         self.minfont, self.minaxis = self.make_var_font("ASHR")
         self.maxfont, self.maxaxis = self.make_var_font("ASTR")
-
-        self.reshape_font_funcs = hb.FontFuncs.create(True)
-        self.reshape_font_funcs.set_nominal_glyph_func(get_glyph, None, None)
 
     def make_font(self, variations=None, funcs=None):
         cache = self.cache["hb"]
@@ -239,7 +239,7 @@ class Shaper:
         return buf
 
     def reshape(self, glyphs, variations):
-        font = self.make_font(variations, self.reshape_font_funcs)
+        font = self.make_font(variations, self._font_funcs)
         buf = self.clear_buffer()
         codepoints = [g.index + GID_OFFSET for g in reversed(glyphs)]
         buf.add_codepoints(codepoints, len(codepoints), 0, len(codepoints))
